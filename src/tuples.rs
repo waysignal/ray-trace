@@ -1,61 +1,61 @@
-use std::ops::{Index, Add, Sub, Neg, Mul, Div};
-
-#[derive(Debug, Clone, Copy)]
+use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
+use crate::matrix::matrix::{Matrix};
+#[derive(Debug, Clone)]
 pub struct Element {
-    loc: [f64 ; 3], //elements
-    iam: f64, //point or vector
+    pub matrix: Matrix
 }
 
-pub fn vector (e0:f64 , e1:f64 , e2:f64) -> Element{
+pub fn vector (e0:f32 , e1:f32 , e2:f32) -> Element{
     Element{
-        loc : [ e0 , e1 , e2],
-        iam : 0.0,
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![0.0]])
     }
 }
 
-pub fn point (e0:f64 , e1:f64 , e2:f64) -> Element{
+pub fn point (e0:f32 , e1:f32 , e2:f32) -> Element{
     Element{
-        loc : [ e0 , e1 , e2],
-        iam : 1.0,
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0]])
     }
 }
 
 impl Element {
-    pub fn new(e0:f64, e1:f64 , e2:f64 , t:f64 ) -> Element{
+    pub fn new(e0:f32, e1:f32 , e2:f32 , t:f32 ) -> Element{
         Element{
-            loc : [ e0 , e1 , e2],
-            iam : t,
+            matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![t]])
         }
     }
 
-    pub fn grabtype (&self) -> f64 {
-        self.iam
+    pub fn grabtype (&self) -> f32 {
+        self.matrix.matrix[3][0]
     }
-    pub fn grabloc (&self) -> [f64;3] {
-        self.loc
-    }
-
-    pub fn x (&self) -> f64 {
-        self.loc[0]
-    }
-
-    pub fn y (&self) -> f64 {
-        self.loc[1]
+    pub fn grabloc (&self) -> Vec<f32> {
+        let mut loc = vec![];
+        for x in 0..(self.matrix.rows-1){
+            loc.push(self.matrix.matrix[x][0])
+        }
+        loc
     }
 
-    pub fn z (&self) -> f64 {
-        self.loc[2]
+    pub fn x (&self) -> f32 {
+        self.matrix.matrix[0][0]
     }
 
-    pub fn magnitude(&self) -> f64 {
+    pub fn y (&self) -> f32 {
+        self.matrix.matrix[1][0]
+    }
+
+    pub fn z (&self) -> f32 {
+        self.matrix.matrix[2][0]
+    }
+
+    pub fn magnitude(&self) -> f32 {
         (self.x().powi(2) + self.y().powi(2) + self.z().powi(2)).sqrt()
     }
 
     pub fn normal(&self) -> Element {
-        let mag:f64 = self.magnitude();
+        let mag:f32 = self.magnitude();
         Element { 
-            loc: [self.x()*(1.0/mag), self.y() *(1.0/mag), self.z() *(1.0/mag)], 
-            iam: self.grabtype()*(1.0/mag) 
+            matrix: Matrix::new(vec![vec![self.x()*(1.0/mag)], vec![self.y() *(1.0/mag)], vec![self.z() *(1.0/mag)], vec![self.grabtype()*(1.0/mag)]])
+           
         }
     }
 
@@ -63,7 +63,7 @@ impl Element {
 
     
     pub fn typecheck(&self) -> String {
-        let thistype = self.iam as u32;
+        let thistype = self.grabtype() as u32;
         match thistype {
             1 => String::from("point"),
             2 => String::from("vector"),
@@ -72,27 +72,30 @@ impl Element {
 
     }
 
-    pub fn dot(&self, other: Element) -> f64{
-        self.loc.iter().zip(other.loc.iter()).map(|(x, y)| x * y).sum()
+    pub fn dot(&self, other: Element) -> f32{
+        self.grabloc().iter().zip(other.grabloc().iter()).map(|(x, y)| x * y).sum()
     }
 
     pub fn cross(&self, other: Element) -> Element{
         Element { 
-            loc: [self.y() * other.z() - self.z() * other.y(),
-                  self.z() * other.x() - self.x() * other.z(),
-                  self.x() * other.y() - self.y() * other.x()] ,
-            iam: 0.0 }
-    }
+            matrix:  Matrix::new(vec![vec![self.y() * other.z() - self.z() * other.y()],
+                                    vec![self.z() * other.x() - self.x() * other.z()],
+                                    vec![self.x() * other.y() - self.y() * other.x()],
+                                    vec![0.0]])
+                        }
+                    }
 }
 
 impl Sub for Element {
     type Output = Element;
     fn sub(self, other: Element) -> Element{
         Element {
-            loc: [self.x() - other.x(), self.y() - other.y(),self.z() - other.z()],
+            matrix: Matrix::new(vec![vec![self.x() - other.x()], 
+            vec![self.y() - other.y()],
+            vec![self.z() - other.z()],
+            vec![self.grabtype() - other.grabtype()]])
             //self.loc.iter().zip(other.loc.iter()).map(|(x, y)| x - y).collect() -> cant collect into an array
 
-            iam: self.grabtype() - other.grabtype(),
         }
     }
 }
@@ -101,8 +104,10 @@ impl Add for Element {
     type Output = Element;
     fn add(self, other: Element) -> Element{
         Element {
-            loc: [self.x() + other.x(), self.y() + other.y(),self.z() + other.z()],
-            iam: self.grabtype() + other.grabtype(),
+            matrix: Matrix::new(vec![vec![self.x() + other.x()], 
+            vec![self.y() + other.y()],
+            vec![self.z() + other.z()],
+            vec![self.grabtype() + other.grabtype()]])
         }
     }
 }
@@ -111,44 +116,50 @@ impl Neg for Element {
     type Output = Element;
     fn neg(self) -> Element {
         Element{
-            loc: [0.0 - self.x(), 0.0 - self.y(), 0.0 - self.z()],
-            iam: 0.0 - self.grabtype()
+            matrix: Matrix::new( vec![vec![0.0 - self.x()], 
+            vec![0.0 - self.y()], 
+            vec![0.0 - self.z()],
+            vec![0.0 - self.grabtype()]])
         }
     }
     
 }
 
-impl Mul<f64> for Element {
+impl Mul<f32> for Element {
     type Output = Element;
-    fn mul(self, other: f64) -> Element{
+    fn mul(self, other: f32) -> Element{
         Element {
-            loc: [self.x() * other, self.y() * other, self.z() * other],
-            iam: self.grabtype() * other,
+            matrix: Matrix::new( vec![vec![self.x() * other], 
+            vec![self.y() * other],
+            vec![self.z() * other],
+            vec![1.0]])
         }
     }
 }
 
 
-impl Mul<Element> for f64 {
+impl Mul<Element> for f32 {
     type Output = Element;
     fn mul(self, other: Element) -> Element{
         Element {
-            loc: [self * other.x(), self * other.y(), self * other.z()],
-            iam: other.grabtype() * self,
+            matrix: Matrix::new(vec![vec![self * other.x()], 
+            vec![self * other.y()],
+            vec![self * other.z()],
+            vec![ other.grabtype() * self]])
         }
     }
 }
 
 
 
-impl Index<usize> for Element {
+/*impl Index<usize> for Element {
     //usize is a valid index
-    type Output = f64;
-    fn index(&self, index: usize) -> &f64 {
+    type Output = f32;
+    fn index(&self, index: usize) -> &f32 {
         &self.loc[index]
     }
 
-}
+}*/
 
 
 
@@ -168,4 +179,10 @@ mod tests{
         let tester = vector(1.0,2.0,3.0);
         assert_eq!(0.0,tester.grabtype());
     }  
+
+    #[test]
+    fn newvector(){
+        let nv = vector(1.0,2.0,3.0);
+        eprintln!("{:?} ",  nv)
+    }
 }
