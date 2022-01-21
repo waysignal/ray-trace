@@ -1,26 +1,26 @@
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
-use crate::matrix::matrix::{Matrix};
-#[derive(Debug, Clone)]
+use crate::Matrix;
+#[derive(Debug, Clone,PartialEq)]
 pub struct Element {
     pub matrix: Matrix
 }
 
 pub fn vector (e0:f32 , e1:f32 , e2:f32) -> Element{
     Element{
-        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![0.0]])
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![0.0_f32.clamp(0.0,1.0)]])
     }
 }
 
 pub fn point (e0:f32 , e1:f32 , e2:f32) -> Element{
     Element{
-        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0]])
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0_f32.clamp(0.0,1.0)]])
     }
 }
 
 impl Element {
     pub fn new(e0:f32, e1:f32 , e2:f32 , t:f32 ) -> Element{
         Element{
-            matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![t]])
+            matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![t.clamp(0.0,1.0)]])
         }
     }
 
@@ -54,7 +54,7 @@ impl Element {
     pub fn normal(&self) -> Element {
         let mag:f32 = self.magnitude();
         Element { 
-            matrix: Matrix::new(vec![vec![self.x()*(1.0/mag)], vec![self.y() *(1.0/mag)], vec![self.z() *(1.0/mag)], vec![self.grabtype()*(1.0/mag)]])
+            matrix: Matrix::new(vec![vec![self.x()*(1.0/mag)], vec![self.y() *(1.0/mag)], vec![self.z() *(1.0/mag)], vec![self.grabtype()*(1.0/mag).clamp(0.0,1.0)]])
            
         }
     }
@@ -81,7 +81,7 @@ impl Element {
             matrix:  Matrix::new(vec![vec![self.y() * other.z() - self.z() * other.y()],
                                     vec![self.z() * other.x() - self.x() * other.z()],
                                     vec![self.x() * other.y() - self.y() * other.x()],
-                                    vec![0.0]])
+                                    vec![0.0]]) //cannot cross points
                         }
                     }
 }
@@ -93,7 +93,7 @@ impl Sub for Element {
             matrix: Matrix::new(vec![vec![self.x() - other.x()], 
             vec![self.y() - other.y()],
             vec![self.z() - other.z()],
-            vec![self.grabtype() - other.grabtype()]])
+            vec![(self.grabtype() - other.grabtype()).clamp(0.0,1.0)]])
             //self.loc.iter().zip(other.loc.iter()).map(|(x, y)| x - y).collect() -> cant collect into an array
 
         }
@@ -107,7 +107,7 @@ impl Add for Element {
             matrix: Matrix::new(vec![vec![self.x() + other.x()], 
             vec![self.y() + other.y()],
             vec![self.z() + other.z()],
-            vec![self.grabtype() + other.grabtype()]])
+            vec![(self.grabtype() + other.grabtype()).clamp(0.0,1.0)]])
         }
     }
 }
@@ -119,7 +119,7 @@ impl Neg for Element {
             matrix: Matrix::new( vec![vec![0.0 - self.x()], 
             vec![0.0 - self.y()], 
             vec![0.0 - self.z()],
-            vec![0.0 - self.grabtype()]])
+            vec![(0.0 - self.grabtype()).clamp(0.0,1.0)]])
         }
     }
     
@@ -132,7 +132,9 @@ impl Mul<f32> for Element {
             matrix: Matrix::new( vec![vec![self.x() * other], 
             vec![self.y() * other],
             vec![self.z() * other],
-            vec![1.0]])
+            vec![(self.grabtype() * other).clamp(0.0,1.0) ]])
+            //vec![self.grabtype() * other]])
+            // having the 0/1 indicator for type messes up the matrix, grows too much, we know that the type can only have 0 or 1 value
         }
     }
 }
@@ -145,7 +147,7 @@ impl Mul<Element> for f32 {
             matrix: Matrix::new(vec![vec![self * other.x()], 
             vec![self * other.y()],
             vec![self * other.z()],
-            vec![ other.grabtype() * self]])
+            vec![ (other.grabtype() * self).clamp(0.0,1.0)]])
         }
     }
 }
@@ -161,28 +163,3 @@ impl Mul<Element> for f32 {
 
 }*/
 
-
-
-
-#[cfg(test)]
-mod tests{
-    use super::*;
-
-    #[test]
-    fn ispoint(){
-        let tester = point(1.0,2.0,3.0);
-        assert_eq!(1.0,tester.grabtype());
-    }
-
-    #[test]
-    fn isvector(){
-        let tester = vector(1.0,2.0,3.0);
-        assert_eq!(0.0,tester.grabtype());
-    }  
-
-    #[test]
-    fn newvector(){
-        let nv = vector(1.0,2.0,3.0);
-        eprintln!("{:?} ",  nv)
-    }
-}

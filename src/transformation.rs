@@ -1,5 +1,4 @@
-use crate::{Element, vector, point};
-use crate::matrix::matrix::{Matrix,equal_floats};
+
 /*Moving into matrix methods, might be a pain to deal with having a separate struct for elements and matrix,  */
 // impl Matrix{
 //     pub fn translation(self,x:f32,y:f32,z:f32) -> Matrix {
