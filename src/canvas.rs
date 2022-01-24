@@ -1,5 +1,6 @@
 
 use crate::{Element, vector};
+use crate::shapes::Color;
 use std::convert::TryFrom;
 
 #[derive(Debug)]
@@ -35,8 +36,11 @@ impl Canvas {
         }
     }
 
-    pub fn color(&mut self, x:usize, y:usize, c: Element){//Pixel{   // canvas.color(x,y,color)
-        self.pixels[y][x] = c;
+    pub fn color(&mut self, x:usize, y:usize, c: Color){//Pixel{   // canvas.color(x,y,color)
+        let r = (c.r * 255.0).clamp(0.0, 255.0);
+        let g = (c.g * 255.0).clamp(0.0, 255.0);
+        let b = (c.b * 255.0).clamp(0.0, 255.0);
+        self.pixels[y][x] = Element::new(r,g,b,0.0);
         
     }
 
