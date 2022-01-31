@@ -1,5 +1,9 @@
-use crate::{Element,Matrix,point,vector};
+use crate::canvas::Canvas;
+use crate::{Element,Matrix,point,vector,scale, equal_floats,translation};
+use crate::rays::{Ray,  intersect, Intersections,Intersection,hit};
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
+
+static EPSILON: f32 = 0.005;
 #[derive(Debug, Clone,PartialEq)]
 pub struct Sphere{
     pub loc: Element,
@@ -72,7 +76,7 @@ impl Material{
 
 
 
-pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,normalv:Element) -> Color {
+pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,normalv:Element,in_shadow:bool) -> Color {
     //let e = Element {matrix: m.color.matrix.dot(light.clone().intensity.matrix).unwrap()};
     
     let light = light.clone();
@@ -84,7 +88,7 @@ pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,no
     let mut specular = Color::new(0.0,0.0,0.0);
     
 
-    if light_dot_normal < 0.0 {
+    if light_dot_normal < 0.0  {
         diffuse =  Color::new(0.0,0.0,0.0);
         specular =  Color::new(0.0,0.0,0.0);
     } else {
@@ -99,9 +103,15 @@ pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,no
         }
 
     }
-
-    ambient + diffuse + specular 
+    if in_shadow {
+        ambient
+    }else {
+        ambient + diffuse + specular 
+    }
 }
+
+
+
 #[derive(Debug, Clone,PartialEq)]
 pub struct Color{
     pub r: f32,
@@ -112,6 +122,15 @@ pub struct Color{
 impl Color{
     pub fn new(r: f32, g: f32, b: f32) -> Color{
         Color { r: r, g: g, b: b }
+    }
+    pub fn equal(self, o: Color) -> bool {
+        
+        let l = vec![equal_floats(&self.r,&o.r), equal_floats(&self.g,&o.g) , equal_floats(&self.b,&o.b)];
+        if l.contains(&false){
+            false
+        }else{
+            true
+        }
     }
 }
 
@@ -151,4 +170,203 @@ impl Mul<Color> for Color {
             g: self.g * other.g, 
             b: self.b * other.b }
     }
+}
+
+#[derive(Debug,Clone)]
+pub struct World{
+    pub objects: Vec<Sphere>,
+    pub light_source: PointLight,
+}
+
+impl World{
+    pub fn new() -> World {
+        let mut s1 = Sphere::new();
+        s1.material.color = Color::new(0.8,1.0,0.6);
+        s1.material.diffuse = 0.7;
+        s1.material.specular = 0.2;
+
+        let mut s2 = Sphere::new();
+        s2.set_transform(&scale(0.5,0.5,0.5));
+        World { objects: vec![s1,s2] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
+    }
+
+    pub fn intersect_world<'a>(&'a self,r:&Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
+
+        for (i,j) in self.objects.iter().enumerate(){
+            for (a,b) in intersect(&r, j).h.iter().enumerate(){
+                let hits = b.clone();
+                l.push(hits);
+            }
+        }
+        l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap());
+        let list_l= l.len() as u32;
+        let list_s = l.clone();
+        Intersections{ 
+            count: list_l,
+            h: list_s,
+        }
+    }
+}
+
+#[derive(Debug,Clone)]
+pub struct Computations{
+    pub t: f32,
+    pub object: Sphere,
+    pub point: Element,
+    pub eyev: Element,
+    pub normalv: Element,
+    pub inside: bool,
+    pub over_point: Element
+
+}
+
+impl Computations{
+    pub fn prepare_computations(i: &Intersection, r: &Ray) -> Computations
+    {
+        let t = i.t;
+        let object = i.o;
+        let point =r.position(t);
+        let mut normalv = normal_at(object, &point);
+        let eyev= -r.clone().direction;
+        let mut inside = true;
+        if normalv.clone().dot(eyev.clone()) < 0.0 {
+
+            normalv = -normalv;
+
+        }
+        else {
+            inside = false;
+        }
+        
+        let c =Computations{
+            t: i.t,
+            object: i.o.clone(),
+            point: point.clone(),
+            eyev: eyev,
+            normalv: normalv.clone(), //how to use clone less?
+            inside: inside,
+            over_point : point.clone() + normalv.clone() * EPSILON,
+        };
+
+        c
+        
+    }
+}
+
+
+pub fn shade_hit(world: &World, comps: Computations) -> Color{
+    let shadowed = is_shadowed(world, &comps.over_point);
+    lighting(comps.object.material, &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
+}
+
+pub fn color_at(w: &World, r: &Ray) -> Color{
+    let mut intersections = w.intersect_world(r, vec![]);
+    let hit = hit(&mut intersections);
+
+    if hit == None {
+        Color::new(0.0,0.0,0.0)
+    } else {
+        let comp = Computations::prepare_computations(hit.unwrap(),r);
+        shade_hit(w,comp)
+
+
+    }
+
+}
+
+pub fn view_transform(from: Element ,to: Element , up: Element) -> Matrix {
+    let forward = (to-from.clone()).normal(); 
+    let upn = up.normal();
+    let left = forward.clone().cross(upn);
+    let true_up = left.cross(forward.clone());
+    let mut orientation = Matrix::new(vec![vec![left.x(),left.y(),left.z(),0.0],
+                                                vec![true_up.x(),true_up.y(),true_up.z(),0.0],
+                                                vec![-forward.x(),-forward.y(),-forward.z(),0.0],
+                                                vec![0.0,0.0,0.0,1.0]]);
+    orientation.dot(translation(-from.x(),-from.y(),-from.z())).unwrap()
+
+}
+
+#[derive(Debug)]
+pub struct Camera{
+    pub hsize: u32,
+    pub vsize: u32,
+    pub field_of_view: f32,
+    pub transform: Matrix,
+    pub pixel_size: f32,
+    pub half_width: f32,
+    pub half_height: f32,
+
+}
+
+impl Camera{
+    pub fn new(hsize:u32,vsize: u32,
+        field_of_view: f32,) -> Camera {
+            let half_view = (field_of_view/2.0).tan();
+            let aspect = hsize as f32 /vsize as f32;
+            let mut half_width;
+            let mut half_height;
+            if aspect >= 1.0 {
+                half_width = half_view;
+                half_height=half_view/aspect;
+            } else{
+                half_width = half_view*aspect;
+                half_height= half_view;
+            }
+            let pixel_size = half_width * 2.0 / hsize as f32;
+            Camera { hsize: hsize, vsize: vsize, field_of_view: field_of_view, transform: Matrix::zero(4,4).identity(), pixel_size: pixel_size, half_height: half_height, half_width: half_width}
+        }
+    
+    pub fn ray_for_pixel(&self,px:u32,py:u32) -> Ray {
+        let xoffset = (px as f32 +  0.5) * self.pixel_size;
+        let yoffset = (py as f32 + 0.5) * self.pixel_size;
+
+        let world_x = self.half_width - xoffset; //f32 has copy trait
+        let world_y = self.half_height - yoffset;
+
+        let inverse_t = self.transform.invert().unwrap();
+        let pixel = inverse_t.dot(point(world_x,world_y, -1.0).matrix).unwrap();
+
+        let origin = inverse_t.dot(point(0.0,0.0,0.0).matrix).unwrap();
+        let direction = (Element{matrix: pixel.clone()} - Element{ matrix: origin.clone()}).normal();
+        Ray::new(Element{matrix: origin} , direction)
+
+    }
+    
+}
+
+pub fn render(c: Camera, w: World) -> Canvas{
+    let mut image = Canvas::new(c.hsize,  c.vsize);
+    for y in 0..c.vsize {
+        for x in 0..c.hsize {
+            let ray = c.ray_for_pixel(x, y);
+            let color = color_at(&w, &ray);
+            image.color(x.try_into().unwrap() ,y.try_into().unwrap(),color);
+        }
+    }
+    image
+}
+
+pub fn is_shadowed(world: &World, point: &Element) -> bool {
+    let point = point.clone();
+    let world = world.clone();
+    let v =  world.clone().light_source.position - point.clone();
+    let distance = v.magnitude();
+    let direction = v.normal();
+
+    let ray = Ray::new(point,direction);
+    let mut intersections = world.intersect_world(&ray, vec![]); //removed clone from world -> temp value is now not freed?
+    let hit = hit(&mut intersections);
+    if hit.is_none() {
+        false
+    } else {
+        let hit = hit.unwrap();
+        if hit.t < distance{
+            true
+        } else {
+            false
+        }
+        
+    }
+
 }

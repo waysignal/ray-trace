@@ -5,14 +5,14 @@ use std::convert::TryFrom;
 
 #[derive(Debug)]
 pub struct Canvas{
-    pub w: u64,
-    pub h: u64,
+    pub w: u32,
+    pub h: u32,
     pub pixels: Vec<Vec<Element>>
 }
 
 
 impl Canvas {
-    pub fn new(w0: u64, h0:u64) -> Canvas {
+    pub fn new(w0: u32, h0:u32) -> Canvas {
         Canvas{
             w: w0,
             h: h0,
@@ -21,7 +21,7 @@ impl Canvas {
         }
     }
 
-    pub fn h(&self) -> u64 {
+    pub fn h(&self) -> u32 {
         self.h
     }
     pub fn draw(self) {
@@ -44,4 +44,5 @@ impl Canvas {
         
     }
 
+    
 }

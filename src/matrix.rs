@@ -29,6 +29,9 @@ pub mod matrix{
     use std::ops::{Neg,Div};
     static EPSILON: f32 = 0.00001;
 
+
+
+
     #[derive(Debug, Clone,PartialEq)]
     pub struct Matrix{
         pub matrix:  Vec<Vec<f32>>, //array on stack will be dropped anyways

@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub mod tests{
 
-    use crate::shapes::{Sphere, normal_at,reflect, PointLight, Material,lighting, Color};
+    use crate::shapes::{Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed}; 
     use crate::Canvas;
     use crate::matrix::matrix::*;
     use crate::rays::{Ray, hit, intersect, Intersections,Intersection};
@@ -46,7 +46,7 @@ pub mod tests{
         }
 
         for (_x, y)  in points.iter().enumerate(){
-            clock.color(y.x() as usize,200 - (y.y() as usize),vector(255.0,255.0,255.0))
+            clock.color(y.x() as usize,200 - (y.y() as usize),Color::new(1.0,1.0,1.0))
         }
 
         //clock.draw()
@@ -315,7 +315,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv);
+        let result = lighting(m,&light,pos,eyev,normalv,false);
         assert_eq!(Color::new(1.9,1.9,1.9),result);
 
         let mut m = Material::new();
@@ -324,7 +324,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv);
+        let result = lighting(m,&light,pos,eyev,normalv,false);
         assert_eq!(Color::new(1.0,1.0,1.0),result);
 
         let mut m = Material::new();
@@ -333,7 +333,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,10.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv);
+        let result = lighting(m,&light,pos,eyev,normalv,false);
         //assert_eq!(Color::new(0.7364,0.7364,0.7364),result); //close
 
         let mut m = Material::new();
@@ -342,7 +342,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,10.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv);
+        let result = lighting(m,&light,pos,eyev,normalv,false);
         //assert_eq!(Color::new(1.6364,1.6364,1.6364),result); //close
 
         
@@ -352,7 +352,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv);
+        let result = lighting(m,&light,pos,eyev,normalv,false);
         assert_eq!(Color::new(0.1,0.1,0.1),result); //close
 
     }
@@ -388,13 +388,214 @@ pub mod tests{
                     let point = r.position(int.t);
                     let normal = normal_at(&int.o, &point);
                     let eye = -r.dir();
-                    let color = lighting(int_s.material, &light, point, eye, normal);
+                    let color = lighting(int_s.material, &light, point, eye, normal,false);
                     new.color(x,y,color);
                 }
             }
     
         }
         //new.draw();
+    }
+
+
+    #[test]
+    fn world_feature_92(){
+        let w = World::new();
+        let r = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
+        let xs = w.intersect_world(&r,vec![]);
+        let w = World::new();
+        assert_eq!(4,xs.count);
+        assert_eq!(4.0,xs.h[0].t);
+        assert_eq!(4.5,xs.h[1].t);
+        assert_eq!(5.5,xs.h[2].t);
+        assert_eq!(6.0,xs.h[3].t);
+        
+
+    }
+    #[test]
+    fn intersections_feature_p93(){
+        let r = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
+        let s = Sphere::new();
+        let i = Intersection { t: 4.0, o: &s};
+        
+        let comps = Computations::prepare_computations(&i.clone(),&r);
+        assert_eq!(i.clone().t, comps.t);
+        assert_eq!(i.clone().o, &comps.object);
+        assert_eq!(point(0.0,0.0,-1.0), comps.point);
+        assert_eq!(vector(0.0,0.0,-1.0), comps.eyev);
+        assert_eq!(vector(0.0,0.0,-1.0), comps.normalv);
+
+        let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
+        let s = Sphere::new();
+        let i = Intersection { t: 1.0, o: &s};
+        
+        let comps = Computations::prepare_computations(&i.clone(),&r);
+        assert_eq!(i.clone().t, comps.t);
+        assert_eq!(true, comps.inside);
+        assert_eq!(point(0.0,0.0,1.0), comps.point);
+        assert_eq!(vector(0.0,0.0,-1.0), comps.eyev);
+        assert_eq!(vector(0.0,0.0,-1.0), comps.normalv);
+    }
+    #[test]
+    fn world_feature_95(){
+        let w = World::new();
+        let r = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
+        let shape = &w.objects[0];
+        let i = Intersection { t: 4.0, o: &shape};
+        let comps = Computations::prepare_computations(&i, &r);
+        let c = shade_hit(&w,comps);
+        //assert_eq!(Color::new(0.38066,0.47583,0.2855), c); // yes
+        let mut w = World::new();
+        w.light_source = PointLight::new(point(0.0,0.25,0.0), Color::new(1.0,1.0,1.0));
+    
+        let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
+        let shape = &w.objects[1];
+        let i = Intersection { t: 0.5, o: &shape};
+        let comps = Computations::prepare_computations(&i, &r);
+        let c = shade_hit(&w,comps);
+        //assert_eq!(Color::new(0.90498,0.90498,0.90498), c); //yes
+    }
+    #[test]
+    fn world_feature_96(){
+        let w = World::new();
+        let r =Ray::new(point(0.0,0.0,-5.0), vector(0.0,1.0,0.0));
+        let c = color_at(&w, &r);
+        assert!(c.equal(Color::new(0.0,0.0,0.0)));
+
+        let w = World::new();
+        let r =Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
+        let c = color_at(&w, &r);
+        assert!(c.equal(Color::new(0.38066, 0.47583, 0.2855)));
+
+        let mut w = World::new();
+        w.objects[0].material.ambient = 1.0;
+        w.objects[1].material.ambient = 1.0;
+        let r =Ray::new(point(0.0,0.0,0.75), vector(0.0,0.0,-1.0));
+        let c = color_at(&w, &r);
+        let this = &w.objects[1].material.color;
+        assert!(c.equal(this.clone()));
+    }
+
+    #[test]
+    fn transformation_feature(){
+        let from = point(0.0,0.0,0.0);
+        let to = point(0.0,0.0,-1.0);
+        let up = vector(0.0,1.0,0.0);
+
+        let t = view_transform(from,to,up);
+        assert_eq!(Matrix::zero(4,4).identity(),t);
+
+        let from = point(0.0,0.0,0.0);
+        let to = point(0.0,0.0,1.0);
+        let up = vector(0.0,1.0,0.0);
+
+        let t = view_transform(from,to,up);
+        assert_eq!(scale(-1.0,1.0,-1.0),t);
+
+        let from = point(0.0,0.0,8.0);
+        let to = point(0.0,0.0,0.0);
+        let up = vector(0.0,1.0,0.0);
+
+        let t = view_transform(from,to,up);
+        assert_eq!(translation(0.0,0.0,-8.0),t);
+
+        
+        let from = point(1.0,3.0,2.0);
+        let to = point(4.0,-2.0,8.0);
+        let up = vector(1.0,1.0,0.0);
+
+        let t = view_transform(from,to,up);
+        eprintln!("{:?}", t)
+    }
+    #[test]
+    fn camera_feature_101(){
+        let c = Camera::new(125,200,PI/2.0);
+        eprintln!("{:?}", c);
+    }
+    #[test]
+    fn camera_feature_103(){
+        let c = Camera::new(201,101,PI/2.0);
+        let r = c.ray_for_pixel(100, 50);
+        assert_eq!(point(0.0,0.0,0.0), r.origin);
+        assert!(vector(0.0,0.0,-1.0).matrix.equal(r.direction.matrix));
+
+        let c = Camera::new(201,101,PI/2.0);
+        let r = c.ray_for_pixel(0, 0);
+        assert_eq!(point(0.0,0.0,0.0), r.origin);
+        assert!(vector(0.66519,0.33259,-0.66851).matrix.equal(r.direction.matrix));
+
+        let mut c = Camera::new(201,101,PI/2.0);
+        c.transform = rotate_y(PI/4.0).dot(translation(0.0,-2.0,5.0)).unwrap();
+        let r = c.ray_for_pixel(100, 50);
+        assert!(point(0.0,2.0,-5.0).matrix.equal(r.origin.matrix));
+        assert!(vector(2.0_f32.sqrt()/2.0,0.0,-2.0_f32.sqrt()/2.0).matrix.equal(r.direction.matrix));
+    }
+
+    #[test]
+    fn camera_feature_104(){
+        let w = World::new();
+        let mut c = Camera::new(11,11,PI/2.0);
+        let from = point(0.0,0.0,-5.0);
+        let to = point(0.0,0.0,0.0);
+        let up = vector(0.0,1.0,0.0);
+        c.transform = view_transform(from, to, up);
+
+        let image = render(c, w);
+        //assert_eq!(image.pixels[5][5], Element::new(0.38066*255.0,0.47583*255.0,0.2855*255.0,0.0)); //equal
+    }
+
+    #[test]
+    fn materials_feature_110(){
+        let mut m = Material::new();
+        let pos = point(0.0,0.0,0.0);
+        let eyev = vector(0.0,0.0,-1.0);
+        let normalv = vector(0.0,0.0,-1.0);
+        let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
+
+        let result = lighting(m,&light,pos,eyev,normalv,true);
+        assert_eq!(Color::new(0.1,0.1,0.1),result);
+    }
+
+    #[test]
+    fn world_feature_111(){
+        let w = World::new();
+        let p = point(0.0,10.0,0.0);
+        assert_eq!(false, is_shadowed(&w,&p));
+
+        let p = point(10.0,-10.0,10.0);
+        assert_eq!(true, is_shadowed(&w,&p));
+
+        let p = point(-20.0,20.0,-20.0);
+        assert_eq!(false, is_shadowed(&w,&p));
+
+        let p = point(-2.0,2.0,-2.0);
+        assert_eq!(false, is_shadowed(&w,&p));
+
+
+    }
+    #[test]
+    fn world_feature_114(){
+        let mut w = World::new();
+        w.light_source = PointLight::new(point(0.0,0.0,-10.0),Color::new(1.0,1.0,1.0));
+        w.objects[1].set_transform(&translation(0.0,0.0,10.0));
+        let ray = Ray::new(point(0.0,0.0,5.0),vector(0.0,0.0,1.0));
+        let i = Intersection::new(4.0,&w.objects[1]);
+        let comps = Computations::prepare_computations(&i,&ray);
+        assert_eq!(Color::new(0.1,0.1,0.1), shade_hit(&w,comps)) 
+    }
+
+    #[test]
+    fn intersections_feature_115(){
+        static EPSILON: f32 = 0.1;
+        let ray = Ray::new(point(0.0,0.0,-5.0),vector(0.0,0.0,1.0));
+        let mut shape = Sphere::new();
+        shape.set_transform(&translation(0.0,0.0,1.0));
+        let i = Intersection::new(5.0,&shape);
+        let comps = Computations::prepare_computations(&i, &ray);
+        assert_eq!(true, comps.over_point.z() < -EPSILON/2.0);
+        assert_eq!(true, comps.point.z() > comps.over_point.z());
+
+
     }
 }
 
