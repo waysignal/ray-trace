@@ -1,9 +1,79 @@
 use crate::canvas::Canvas;
 use crate::{Element,Matrix,point,vector,scale, equal_floats,translation};
-use crate::rays::{Ray,  intersect, Intersections,Intersection,hit};
+use crate::rays::{Ray, Intersections,Intersection,hit};
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
 
 static EPSILON: f32 = 0.005;
+
+
+pub trait ShapeThings{
+    fn intersect(&self,r: &Ray) -> Intersections;
+    fn get_transform(&self) -> Matrix;
+    fn normal_at(&self, pos: &Element) -> Element;
+}
+
+#[derive(Debug, Clone)]
+pub struct Shape {
+    pub transform: Matrix,
+    pub material: Material,
+    
+}
+
+impl Shape {
+    pub fn set_transform(&mut self,t: Matrix){ //switching to not a reference for Matrix bc design choice: each one should be unique
+        let t_c = t.clone();
+        self.transform = t_c;
+
+    }
+
+    pub fn test() -> Shape{
+        Shape{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(),
+            
+        }
+    }
+}
+
+impl ShapeThings for Shape{
+    
+    fn intersect(&self,r: &Ray) -> Intersections{
+
+        eprintln!("{:?}", r.clone().transform(&self.transform.invert().unwrap()));
+        Intersections { count: 0, h: vec![] }
+    }
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+    fn normal_at(&self, pos: &Element) -> Element{
+        let mut p = pos.clone();
+        p.matrix.matrix[3][0] = 0.0;
+        p
+    }
+}
+
+#[derive(Debug,Clone)]
+struct Plane{
+    pub transform: Matrix,
+    pub material: Material,
+}
+
+impl ShapeThings for Plane{
+    fn intersect(&self,r: &Ray) -> Intersections{
+        if (r.direction.y()).abs() < EPSILON{
+            Intersections { count: 0, h: vec![]}
+        } else {
+            let t = -r.origin.y()/r.direction.y();
+            Intersections { count: 1, h: vec![Intersection{ t: t, o: self}] }
+        }
+    }
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+    fn normal_at(&self, pos: &Element) -> Element{
+        vector(0.0,1.0,0.0)
+    }
+}
 #[derive(Debug, Clone,PartialEq)]
 pub struct Sphere{
     pub loc: Element,
@@ -27,12 +97,57 @@ impl Sphere{
     }
 }
 
-pub fn normal_at(obj: &Sphere, pos: &Element) -> Element{
-    let pos_0 = pos.clone(); //using clone to dereference pos (cant just do it bc it is shared), dont need to for obj bc by accessing its field, it already does so -> edit: jk need for obj too
-    let obj_0 = obj.clone();
-    let object_poi = obj_0.transform.invert().unwrap().dot(pos_0.matrix).unwrap(); //poi in object space
-    let object_nor = (Element{matrix:object_poi} - point(0.0,0.0,0.0)); //get normal dir of (poi and sphere) in object space, hint: finding normal from 0,0,0 (sphere)
-    let mut world_nor = obj_0.transform.invert().unwrap().transpose().dot(object_nor.matrix).unwrap(); //
+impl ShapeThings for Sphere{
+    fn intersect(&self,r: &Ray) -> Intersections{
+        let t_r = r.clone().transform(&self.transform.invert().unwrap()); //why ref here too?, isnt obj already one?, accessing fields changes this?
+        
+        //maybe have dot use reference so we dont have to keep repeating clone
+        let a = t_r.clone().direction.dot(t_r.clone().direction);
+        let b = 2.0 * t_r.clone().direction.dot(t_r.clone().sphere_to_ray(&self));
+        let c = t_r.clone().sphere_to_ray(&self).dot(t_r.clone().sphere_to_ray(&self)) - 1.0; 
+        //radius is still 1 bc we are scaling the ray, operating in object space
+        // eprintln!("t_r: {:?}", t_r); //correct
+        // eprintln!("sphere loc: {:?}", obj.loc);
+        // eprintln!("sphere to ray: {:?}", t_r.clone().sphere_to_ray(&obj));
+        // eprintln!("a: {:?}, \n b: {:?} \n c: {:?} ", a,b,c);
+            //a is modulus squared
+            //b 
+        let discri = b.powi(2) - 4.0 * a * c;
+        if discri < 0.0 {
+            Intersections { count: 0,  h: vec![]}
+        } else {
+            let t1 = (-b - discri.sqrt())/(2.0*a);
+            let t2 = (-b + discri.sqrt())/(2.0*a);
+            //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
+            let s1 =  t_r.position(t1).z();
+            let s2 =  t_r.position(t2).z(); //s's are positions of intersections
+            //distance away is given by position()
+            let i1 = Intersection::new(t1,&self);
+            let i2 = Intersection::new(t2,&self);
+            Intersections { count: 2,  h: vec![i1,i2]}            
+            }
+        }
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+
+    fn normal_at(&self, pos: &Element) -> Element {
+        let pos_0 = pos.clone(); //using clone to dereference pos (cant just do it bc it is shared), dont need to for obj bc by accessing its field, it already does so -> edit: jk need for obj too
+        let obj_0 = self.clone();
+        let object_poi = obj_0.transform.invert().unwrap().dot(pos_0.matrix).unwrap(); //poi in object space
+        let object_nor = Element{matrix:object_poi} - point(0.0,0.0,0.0); //get normal dir of (poi and sphere) in object space, hint: finding normal from 0,0,0 (sphere)
+        let mut world_nor = obj_0.transform.invert().unwrap().transpose().dot(object_nor.matrix).unwrap(); //
+        world_nor.matrix[3][0] = 0.0;
+        Element{matrix: world_nor}.normal()
+    }
+    
+}
+
+pub fn normal_at<S>(obj: &S, pos: &Element) -> Element
+    where S: ShapeThings{
+    let local_point = Element{ matrix: obj.get_transform().invert().unwrap().dot(pos.clone().matrix).unwrap()}; //poi in object space
+    let local_normal = obj.normal_at(&local_point);
+    let mut world_nor = obj.get_transform().invert().unwrap().transpose().dot(local_normal.matrix).unwrap(); //
     world_nor.matrix[3][0] = 0.0;
     Element{matrix: world_nor}.normal()
 
@@ -193,7 +308,7 @@ impl World{
     pub fn intersect_world<'a>(&'a self,r:&Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
 
         for (i,j) in self.objects.iter().enumerate(){
-            for (a,b) in intersect(&r, j).h.iter().enumerate(){
+            for (a,b) in j.intersect(r).h.iter().enumerate(){   //CHECK 
                 let hits = b.clone();
                 l.push(hits);
             }

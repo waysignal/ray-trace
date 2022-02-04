@@ -10,7 +10,7 @@ use std::{f32::consts::PI, ops::Add};
 use tuples::{Element, vector, point};
 use canvas::{Canvas};
 use matrix::matrix::*;
-use rays::{Ray,intersect,hit};
+use rays::{Ray,hit};
 use shapes::{Sphere, Material,Color, PointLight,normal_at,lighting,Computations,World, Camera, view_transform,render};
 
 
@@ -55,7 +55,7 @@ fn main() {
     let mut camera = Camera::new(400,200,PI/3.0);
     camera.transform = view_transform(point(0.0,1.5,-5.0), point(0.0,1.0,0.0), vector(0.0,1.0,0.0));
     let canvas = render(camera,world);
-    canvas.draw() //border along bottom and right side have a black bar, perfectly straight so not the spheres that were deformed -> the minus 1 
+    //canvas.draw() //border along bottom and right side have a black bar, perfectly straight so not the spheres that were deformed -> the minus 1 
 }
 
 

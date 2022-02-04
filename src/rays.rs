@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 
 use crate::{Element, vector, point,matrix,Matrix};
-use crate::shapes::Sphere;
+use crate::shapes::{Sphere,Shape,ShapeThings};
 
 
 // Transformations
@@ -65,38 +65,44 @@ pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
 //         Intersections { count: 2,  h: vec![i1,i2]}            
 //         }
 //     }
-pub fn intersect<'a>(r: &Ray, obj: &'a Sphere) -> Intersections<'a>{
+// pub fn intersect<'a>(r: &Ray, obj: &Sphere) -> Intersections<'a>{
       
 
-        let t_r = r.clone().transform(&obj.transform.invert().unwrap()); //why ref here too?, isnt obj already one?, accessing fields changes this?
+//         let t_r = r.clone().transform(&obj.transform.invert().unwrap()); //why ref here too?, isnt obj already one?, accessing fields changes this?
         
-        //maybe have dot use reference so we dont have to keep repeating clone
-        let a = t_r.clone().direction.dot(t_r.clone().direction);
-        let b = 2.0 * t_r.clone().direction.dot(t_r.clone().sphere_to_ray(&obj));
-        let c = t_r.clone().sphere_to_ray(&obj).dot(t_r.clone().sphere_to_ray(&obj)) - 1.0; 
-        //radius is still 1 bc we are scaling the ray, operating in object space
-        // eprintln!("t_r: {:?}", t_r); //correct
-        // eprintln!("sphere loc: {:?}", obj.loc);
-        // eprintln!("sphere to ray: {:?}", t_r.clone().sphere_to_ray(&obj));
-        // eprintln!("a: {:?}, \n b: {:?} \n c: {:?} ", a,b,c);
-            //a is modulus squared
-            //b 
-        let discri = b.powi(2) - 4.0 * a * c;
-        if discri < 0.0 {
-            Intersections { count: 0,  h: vec![]}
-        } else {
-            let t1 = (-b - discri.sqrt())/(2.0*a);
-            let t2 = (-b + discri.sqrt())/(2.0*a);
-            //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
-            let s1 =  t_r.position(t1).z();
-            let s2 =  t_r.position(t2).z(); //s's are positions of intersections
-            //distance away is given by position()
-            let i1 = Intersection::new(t1,&obj);
-            let i2 = Intersection::new(t2,&obj);
-            Intersections { count: 2,  h: vec![i1,i2]}            
-            }
-        }
+//         //maybe have dot use reference so we dont have to keep repeating clone
+//         let a = t_r.clone().direction.dot(t_r.clone().direction);
+//         let b = 2.0 * t_r.clone().direction.dot(t_r.clone().sphere_to_ray(&obj));
+//         let c = t_r.clone().sphere_to_ray(&obj).dot(t_r.clone().sphere_to_ray(&obj)) - 1.0; 
+//         //radius is still 1 bc we are scaling the ray, operating in object space
+//         // eprintln!("t_r: {:?}", t_r); //correct
+//         // eprintln!("sphere loc: {:?}", obj.loc);
+//         // eprintln!("sphere to ray: {:?}", t_r.clone().sphere_to_ray(&obj));
+//         // eprintln!("a: {:?}, \n b: {:?} \n c: {:?} ", a,b,c);
+//             //a is modulus squared
+//             //b 
+//         let discri = b.powi(2) - 4.0 * a * c;
+//         if discri < 0.0 {
+//             Intersections { count: 0,  h: vec![]}
+//         } else {
+//             let t1 = (-b - discri.sqrt())/(2.0*a);
+//             let t2 = (-b + discri.sqrt())/(2.0*a);
+//             //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
+//             let s1 =  t_r.position(t1).z();
+//             let s2 =  t_r.position(t2).z(); //s's are positions of intersections
+//             //distance away is given by position()
+//             let i1 = Intersection::new(t1,&obj);
+//             let i2 = Intersection::new(t2,&obj);
+//             Intersections { count: 2,  h: vec![i1,i2]}            
+//             }
+//         }
     
+pub fn intersect_shape<'a>(r: &Ray, obj: &'a Box<dyn ShapeThings>) -> Intersections<'a>{
+    
+    let local_ray = r.transform(&obj.get_transform().invert().unwrap());
+    obj.intersect(&local_ray) //use lifetime bc using reference to get around the cannot return something owned by the function constraint
+    
+}
 
 
 
@@ -107,15 +113,15 @@ pub struct Ray {
 }
 
 //pub fn intersection(t:Vec<<f32>>, obj: Element);
-#[derive(Debug, Clone,PartialEq)]
+//#[derive(Debug, Clone)]
 pub struct Intersection<'a> {
     pub t : f32,
-    pub o : &'a Sphere,
+    pub o : &'a Box<dyn ShapeThings>,
 
 }
 
 impl<'a> Intersection<'a> {
-    pub fn new(t: f32,o: &'a Sphere) -> Intersection<'a>{
+    pub fn new(t: f32,o: &'a Box<dyn ShapeThings>) -> Intersection<'a>{
 
         Intersection{
             t: t,

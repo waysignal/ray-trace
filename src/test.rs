@@ -2,10 +2,10 @@
 #[cfg(test)]
 pub mod tests{
 
-    use crate::shapes::{Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed}; 
+    use crate::shapes::{Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings}; 
     use crate::Canvas;
     use crate::matrix::matrix::*;
-    use crate::rays::{Ray, hit, intersect, Intersections,Intersection};
+    use crate::rays::{Ray, hit,  Intersections,Intersection};
     use crate::{Element,Matrix, vector, point};
     //use crate::Ray;
     use std::{f32::consts::PI,};
@@ -111,7 +111,7 @@ pub mod tests{
         let r1 = Ray::new(point(0.0,0.0,5.0), vector(0.0,0.0,1.0));
         let mut s1 = Sphere{loc: point(0.0,0.0,0.0),
             transform: Matrix::zero(4,4).identity(),material: Material::new()};
-        let xs = intersect(&r1,&s1);
+        let xs = s1.intersect(&r1);
         eprintln!("{:?}",xs);
         assert_eq!(2,xs.count);
         assert_eq!(-6.0,xs.h[0].t);
@@ -122,7 +122,7 @@ pub mod tests{
         let r1 = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
         let mut s1 = Sphere{loc: point(0.0,0.0,0.0),
             transform: Matrix::zero(4,4).identity(),material: Material::new()};
-        let xs = intersect(&r1,&s1);
+        let xs = s1.intersect(&r1);
         assert_eq!(2,xs.count);
         assert_eq!(&s1,xs.h[0].o);
         assert_eq!(&s1,xs.h[1].o);
@@ -191,7 +191,7 @@ pub mod tests{
             transform: Matrix::zero(4,4).identity(),material: Material::new()};
 
         s.set_transform(&scale(2.0,2.0,2.0)); // who is the owner of scale? -> the function set_tranform
-        let xs = intersect(&r,&s);
+        let xs = s.intersect(&r);
             //needs to be a transformation back -> edit: no there doesnt, t should be correct regardless
         assert_eq!(scale(2.0,2.0,2.0),s.transform);
         assert_eq!(2,xs.count);
@@ -204,7 +204,7 @@ pub mod tests{
 
         let t = translation(0.0,0.0,-8.0);
         s.set_transform(&t);
-        let xs = intersect(&r,&s);
+        let xs = s.intersect(&r);
         eprintln!("{:?}",xs);
         assert_eq!(2,xs.count);
     }
@@ -233,7 +233,7 @@ pub mod tests{
                 let position = point(world_x, world_y, wall_z);
     
                 let r = Ray::new(point(0.0,0.0,-5.0), (position - point(0.0,0.0,-5.0).normal()));
-                let xs = intersect(&r, &s);
+                let xs = s.intersect(&r);
                 if xs.count > 0 {
                     new.color(x,y,Color::new(1.0,0.0,0.0));
                 }
@@ -381,12 +381,12 @@ pub mod tests{
                 let position = point(world_x, world_y, wall_z);
     
                 let r = Ray::new(point(0.0,0.0,-5.0), ((position - point(0.0,0.0,-5.0)).normal()));
-                let mut xs = intersect(&r, &s);
+                let mut xs = s.intersect(&r);
                 if xs.count > 0 {
                     let int = hit(&mut xs).unwrap();
                     let int_s = int.clone().o.clone();      /// BYPASSING THE SHARED REFERENCES
                     let point = r.position(int.t);
-                    let normal = normal_at(&int.o, &point);
+                    let normal = normal_at(int.o, &point);
                     let eye = -r.dir();
                     let color = lighting(int_s.material, &light, point, eye, normal,false);
                     new.color(x,y,color);
@@ -596,6 +596,46 @@ pub mod tests{
         assert_eq!(true, comps.point.z() > comps.over_point.z());
 
 
+    }
+
+    #[test]
+    fn shapes_feature_119(){
+        let mut s = Shape::test();
+        assert_eq!(Material::new(), s.material);
+
+        let mut m = Material::new();
+        m.ambient = 1.0;
+        s.material = m.clone();
+        assert_eq!(m, s.material);
+
+        s.set_transform(translation(2.0,3.0,4.0));
+        assert_eq!(translation(2.0,3.0,4.0), s.transform);
+
+    }
+
+    #[test]
+    fn shapes_feature_112(){
+        let r = Ray::new(point(0.0,0.0,-5.0),vector(0.0,0.0,1.0));
+        let mut s = Shape::test();
+        s.set_transform(scale(2.0,2.0,2.0));
+
+        let xs = s.intersect(&r); //passed
+        let mut s = Shape::test();
+        s.set_transform(translation(5.0,0.0,0.0));
+        let xs = s.intersect(&r);
+
+    }
+
+    #[test]
+    fn shapes_feature_121(){
+        let mut s = Shape::test();
+        s.set_transform(translation(0.0,1.0,0.0));
+        let n = normal_at(&s, &point(0.0,1.70711,-0.70711));
+        assert!(vector(0.0,0.70711,-0.70711).matrix.equal(n.matrix));
+
+        s.set_transform(scale(1.0,0.5,1.0).dot(rotate_z(PI/5.0)).unwrap());
+        let n = normal_at(&s, &point(0.0,2.0_f32.sqrt()/2.0,-2.0_f32.sqrt()/2.0));
+        assert!(vector(0.0,0.97014,-0.24254).matrix.equal(n.matrix));
     }
 }
 
