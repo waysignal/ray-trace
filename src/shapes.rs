@@ -2,17 +2,81 @@ use crate::canvas::Canvas;
 use crate::{Element,Matrix,point,vector,scale, equal_floats,translation};
 use crate::rays::{Ray, Intersections,Intersection,hit};
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
+use std::any::Any;
 
 static EPSILON: f32 = 0.005;
 
 
-pub trait ShapeThings{
+pub trait A {
+    fn as_any(&self) -> &dyn Any;
+    //fn equals_a(&self, _: &dyn A) -> bool;
+}
+
+
+//trait bound here means any static type implement partialeq fit
+// impl <S: 'static + PartialEq> A for S{ //need static so box<shapething> is object safe?
+//     fn as_any(&self) -> &dyn Any {
+//         self
+//     }    
+//     fn equals_a(&self, other: &dyn A) -> bool {
+//         other
+//             .as_any()
+//             .downcast_ref::<S>()
+//             .map_or(false, |a| self == a)
+//     }
+// }
+// to test for equality between trait objects, not my thinking
+
+impl A for Box<dyn ShapeThings>{
+    fn as_any(&self) -> &dyn Any {
+        let s = self;
+        self
+    }    
+    
+
+}
+
+
+
+
+
+pub trait ShapeThings: CloneFoo + Any + std::fmt::Debug { //we cannot use partialeq here bc it calls on Self, which for box<dyn..> we cannot have
+    
     fn intersect(&self,r: &Ray) -> Intersections;
     fn get_transform(&self) -> Matrix;
     fn normal_at(&self, pos: &Element) -> Element;
+    fn get_material(&self) -> Material;
+    fn set_transform(&mut self,t: Matrix);
 }
 
-#[derive(Debug, Clone)]
+// shapethings:clonefoo is blanket implementation, shapethings and clonefoo are "same", a clonefoo can call on shapething's methods and visa versa
+trait CloneFoo {
+    fn clone_box(&self) -> Box<dyn ShapeThings>;
+}
+
+impl<T> CloneFoo for T
+    where T: 'static + ShapeThings + Clone,
+{
+    fn clone_box(&self) -> Box<dyn ShapeThings> { //dyn requires at run time to look up which method to call on which type that implements the trait
+        Box::new(self.clone())
+    }
+}
+//defining Clone for Box<>
+impl Clone for Box<dyn ShapeThings> {
+    fn clone(&self) -> Box<dyn ShapeThings> {
+        self.clone_box()
+    }
+}
+/*not my workaround
+implement Clone trait for box, which is override (calls on the clone box method, which here we can actually clone?; 
+    method is defined for shapethings type bound with static and clone)
+    //cannot just extend Clone bc Box is dynamic which means the size is not known at compile time, but Clone returns Self (which needs defined size at compile time)
+    //Box<> is a trait object, box is the object, shapethings is the trait, we cannot know the size at compile time bc we lose the granularity when putting into box
+    //edit: we lose granularity at the type level bc we ONLY know the trait, the type could be any with their own any methods; so now we have to define Clone where
+    it does not require the use of returning Self (bc it is not object safe to return Self since the original type is forgotten)
+*/
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
     pub transform: Matrix,
     pub material: Material,
@@ -40,8 +104,7 @@ impl ShapeThings for Shape{
     fn intersect(&self,r: &Ray) -> Intersections{
 
         eprintln!("{:?}", r.clone().transform(&self.transform.invert().unwrap()));
-        Intersections { count: 0, h: vec![] }
-    }
+        Intersections { count: 0, h: vec![] }}
     fn get_transform(&self) -> Matrix {
         self.clone().transform
     }
@@ -50,21 +113,39 @@ impl ShapeThings for Shape{
         p.matrix.matrix[3][0] = 0.0;
         p
     }
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+    fn set_transform(&mut self,t: Matrix){
+        let t_c = t.clone();
+        self.transform = t_c;
+
+    }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 struct Plane{
     pub transform: Matrix,
     pub material: Material,
 }
 
+// impl Clone for Plane{
+//     fn clone(&self) -> Plane{
+//         Plane { transform: self.transform, material: self.material }
+//     }
+// }
+
 impl ShapeThings for Plane{
     fn intersect(&self,r: &Ray) -> Intersections{
+        let clone = self.clone();
         if (r.direction.y()).abs() < EPSILON{
             Intersections { count: 0, h: vec![]}
         } else {
             let t = -r.origin.y()/r.direction.y();
-            Intersections { count: 1, h: vec![Intersection{ t: t, o: self}] }
+            
+            Intersections { count: 1, h: vec![Intersection{ t: t, o: &Box::new(Box::new(clone) as Box<dyn ShapeThings>) }] } //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
+            //Plane is too defined, need to push it to trait level
         }
     }
     fn get_transform(&self) -> Matrix {
@@ -72,6 +153,15 @@ impl ShapeThings for Plane{
     }
     fn normal_at(&self, pos: &Element) -> Element{
         vector(0.0,1.0,0.0)
+    }
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+    fn set_transform(&mut self,t: Matrix){
+        let t_c = t.clone();
+        self.transform = t_c;
+
     }
 }
 #[derive(Debug, Clone,PartialEq)]
@@ -122,8 +212,8 @@ impl ShapeThings for Sphere{
             let s1 =  t_r.position(t1).z();
             let s2 =  t_r.position(t2).z(); //s's are positions of intersections
             //distance away is given by position()
-            let i1 = Intersection::new(t1,&self);
-            let i2 = Intersection::new(t2,&self);
+            let i1 = Intersection::new(t1,&Box::new(Box::new(self.clone()) as Box<dyn ShapeThings>));
+            let i2 = Intersection::new(t2,&Box::new(Box::new(self.clone()) as Box<dyn ShapeThings>));
             Intersections { count: 2,  h: vec![i1,i2]}            
             }
         }
@@ -140,10 +230,18 @@ impl ShapeThings for Sphere{
         world_nor.matrix[3][0] = 0.0;
         Element{matrix: world_nor}.normal()
     }
-    
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+    fn set_transform(&mut self,t: Matrix){
+        let t_c = t.clone();
+        self.transform = t_c;
+
+    }
 }
 
-pub fn normal_at<S>(obj: &S, pos: &Element) -> Element
+pub fn normal_at<S: ?Sized>(obj: &S, pos: &Element) -> Element //what does it mean when size is unknown
     where S: ShapeThings{
     let local_point = Element{ matrix: obj.get_transform().invert().unwrap().dot(pos.clone().matrix).unwrap()}; //poi in object space
     let local_normal = obj.normal_at(&local_point);
@@ -287,9 +385,9 @@ impl Mul<Color> for Color {
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct World{
-    pub objects: Vec<Sphere>,
+    pub objects: Vec<Box<dyn ShapeThings>>,
     pub light_source: PointLight,
 }
 
@@ -302,14 +400,14 @@ impl World{
 
         let mut s2 = Sphere::new();
         s2.set_transform(&scale(0.5,0.5,0.5));
-        World { objects: vec![s1,s2] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
+        World { objects: vec![Box::new(s1) as Box<dyn ShapeThings> ,Box::new(s2) as Box<dyn ShapeThings>] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
     }
 
     pub fn intersect_world<'a>(&'a self,r:&Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
 
         for (i,j) in self.objects.iter().enumerate(){
             for (a,b) in j.intersect(r).h.iter().enumerate(){   //CHECK 
-                let hits = b.clone();
+                let hits = *b;
                 l.push(hits);
             }
         }
@@ -323,10 +421,10 @@ impl World{
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct Computations{
     pub t: f32,
-    pub object: Sphere,
+    pub object: Box<dyn ShapeThings>,
     pub point: Element,
     pub eyev: Element,
     pub normalv: Element,
@@ -339,9 +437,9 @@ impl Computations{
     pub fn prepare_computations(i: &Intersection, r: &Ray) -> Computations
     {
         let t = i.t;
-        let object = i.o;
+        let object = *i.o;
         let point =r.position(t);
-        let mut normalv = normal_at(object, &point);
+        let mut normalv = normal_at(&*object, &point);
         let eyev= -r.clone().direction;
         let mut inside = true;
         if normalv.clone().dot(eyev.clone()) < 0.0 {
@@ -371,14 +469,14 @@ impl Computations{
 
 pub fn shade_hit(world: &World, comps: Computations) -> Color{
     let shadowed = is_shadowed(world, &comps.over_point);
-    lighting(comps.object.material, &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
+    lighting(comps.object.get_material(), &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
 }
 
 pub fn color_at(w: &World, r: &Ray) -> Color{
     let mut intersections = w.intersect_world(r, vec![]);
     let hit = hit(&mut intersections);
 
-    if hit == None {
+    if hit.is_none() {
         Color::new(0.0,0.0,0.0)
     } else {
         let comp = Computations::prepare_computations(hit.unwrap(),r);

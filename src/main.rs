@@ -51,7 +51,7 @@ fn main() {
     left.material.specular = 0.3;
 
     let world = World{ light_source: PointLight::new(point(-10.0,10.0,-10.0),Color::new(1.0,1.0,1.0)),
-                        objects: vec![right_wall,floor,left_wall,right,left, middle] };
+                        objects: vec![Box::new(right_wall),Box::new(floor),Box::new(left_wall),Box::new(right),Box::new(left), Box::new(middle)] };
     let mut camera = Camera::new(400,200,PI/3.0);
     camera.transform = view_transform(point(0.0,1.5,-5.0), point(0.0,1.0,0.0), vector(0.0,1.0,0.0));
     let canvas = render(camera,world);

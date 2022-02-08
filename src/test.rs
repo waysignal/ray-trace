@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub mod tests{
 
-    use crate::shapes::{Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings}; 
+    use crate::shapes::{A,Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings}; 
     use crate::Canvas;
     use crate::matrix::matrix::*;
     use crate::rays::{Ray, hit,  Intersections,Intersection};
@@ -94,13 +94,15 @@ pub mod tests{
     #[test]
     fn intersections_feature(){
         let s = Sphere::new();
-        let i1 = Intersection::new(3.5,&s);
+        let i1 = Intersection::new(3.5,&(Box::new(s) as Box<dyn ShapeThings>));
         assert_eq!(3.5, i1.t);
-        assert_eq!(&s, i1.o);
+    
+        let placehold = i1.o.as_any().downcast_ref::<Sphere>().unwrap();
+        assert_eq!(&s, placehold);
 
         let s = Sphere::new();
-        let i1 = Intersection::new(1.0,&s);
-        let i2 = Intersection::new(2.0,&s);
+        let i1 = Intersection::new(1.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i2 = Intersection::new(2.0,&(Box::new(s) as Box<dyn ShapeThings>));
         let group = Intersections::new(vec![i1,i2]);
         assert_eq!(2, group.count);
         assert_eq!(1.0, group.h[0].t);
@@ -124,39 +126,40 @@ pub mod tests{
             transform: Matrix::zero(4,4).identity(),material: Material::new()};
         let xs = s1.intersect(&r1);
         assert_eq!(2,xs.count);
-        assert_eq!(&s1,xs.h[0].o);
-        assert_eq!(&s1,xs.h[1].o);
+        
+        assert_eq!(&s1,xs.h[0].o.as_any().downcast_ref::<Sphere>().unwrap());
+        assert_eq!(&s1,xs.h[1].o.as_any().downcast_ref::<Sphere>().unwrap());
     }
 
     #[test]
     fn intersection_feature_hits(){
         let s = Sphere::new();
 
-        let i1 = Intersection::new(1.0,&s);
-        let i2 = Intersection::new(2.0,&s);
+        let i1 = Intersection::new(1.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i2 = Intersection::new(2.0,&(Box::new(s) as Box<dyn ShapeThings>));
         let mut xs = Intersections::new(vec![i2,i1]);
         let xs_clone = xs.clone();
         assert_eq!(&xs_clone.h[1],hit(&mut xs).unwrap());
 
-        let i1 = Intersection::new(-1.0,&s);
-        let i2 = Intersection::new(1.0,&s);
+        let i1 = Intersection::new(-1.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i2 = Intersection::new(1.0,&(Box::new(s) as Box<dyn ShapeThings>));
         let mut xs = Intersections::new(vec![i2,i1]);
         let xs_clone = xs.clone();
         assert_eq!(&xs_clone.h[0],hit(&mut xs).unwrap());
 
-        let i1 = Intersection::new(-2.0,&s);
-        let i2 = Intersection::new(-1.0,&s);
+        let i1 = Intersection::new(-2.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i2 = Intersection::new(-1.0,&(Box::new(s) as Box<dyn ShapeThings>));
         let mut xs = Intersections::new(vec![i2,i1]);
         assert_eq!(None,hit(&mut xs));
 
-        let i1 = Intersection::new(5.0,&s);
-        let i2 = Intersection::new(7.0,&s);
-        let i3 = Intersection::new(-3.0,&s);
-        let i4 = Intersection::new(2.0,&s);
+        let i1 = Intersection::new(5.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i2 = Intersection::new(7.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i3 = Intersection::new(-3.0,&(Box::new(s) as Box<dyn ShapeThings>));
+        let i4 = Intersection::new(2.0,&(Box::new(s) as Box<dyn ShapeThings>));
 
         let mut xs = Intersections::new(vec![i1,i2,i3,i4]);
         //realizing dont need clone if just put a reference to a new intersection
-        assert_eq!(&Intersection::new(2.0,&s),hit(&mut xs).unwrap());
+        assert_eq!(&Intersection::new(2.0,&(Box::new(s) as Box<dyn ShapeThings>)),hit(&mut xs).unwrap());
 
     }
 
@@ -386,9 +389,9 @@ pub mod tests{
                     let int = hit(&mut xs).unwrap();
                     let int_s = int.clone().o.clone();      /// BYPASSING THE SHARED REFERENCES
                     let point = r.position(int.t);
-                    let normal = normal_at(int.o, &point);
+                    let normal = normal_at(int.o.as_any().downcast_ref::<Sphere>().unwrap(), &point);
                     let eye = -r.dir();
-                    let color = lighting(int_s.material, &light, point, eye, normal,false);
+                    let color = lighting(int_s.get_material(), &light, point, eye, normal,false);
                     new.color(x,y,color);
                 }
             }
@@ -416,18 +419,18 @@ pub mod tests{
     fn intersections_feature_p93(){
         let r = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
         let s = Sphere::new();
-        let i = Intersection { t: 4.0, o: &s};
+        let i = Intersection { t: 4.0, o: &(Box::new(s) as Box<dyn ShapeThings>)};
         
         let comps = Computations::prepare_computations(&i.clone(),&r);
         assert_eq!(i.clone().t, comps.t);
-        assert_eq!(i.clone().o, &comps.object);
+        assert_eq!(i.clone().o.as_any().downcast_ref::<Sphere>().unwrap(), comps.object.as_any().downcast_ref::<Sphere>().unwrap());
         assert_eq!(point(0.0,0.0,-1.0), comps.point);
         assert_eq!(vector(0.0,0.0,-1.0), comps.eyev);
         assert_eq!(vector(0.0,0.0,-1.0), comps.normalv);
 
         let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
         let s = Sphere::new();
-        let i = Intersection { t: 1.0, o: &s};
+        let i = Intersection { t: 1.0, o: &(Box::new(s) as Box<dyn ShapeThings>)};
         
         let comps = Computations::prepare_computations(&i.clone(),&r);
         assert_eq!(i.clone().t, comps.t);
@@ -468,11 +471,11 @@ pub mod tests{
         assert!(c.equal(Color::new(0.38066, 0.47583, 0.2855)));
 
         let mut w = World::new();
-        w.objects[0].material.ambient = 1.0;
-        w.objects[1].material.ambient = 1.0;
+        w.objects[0].get_material().ambient = 1.0;
+        w.objects[1].get_material().ambient = 1.0;
         let r =Ray::new(point(0.0,0.0,0.75), vector(0.0,0.0,-1.0));
         let c = color_at(&w, &r);
-        let this = &w.objects[1].material.color;
+        let this = &w.objects[1].get_material().color;
         assert!(c.equal(this.clone()));
     }
 
@@ -577,7 +580,7 @@ pub mod tests{
     fn world_feature_114(){
         let mut w = World::new();
         w.light_source = PointLight::new(point(0.0,0.0,-10.0),Color::new(1.0,1.0,1.0));
-        w.objects[1].set_transform(&translation(0.0,0.0,10.0));
+        w.objects[1].set_transform(translation(0.0,0.0,10.0));
         let ray = Ray::new(point(0.0,0.0,5.0),vector(0.0,0.0,1.0));
         let i = Intersection::new(4.0,&w.objects[1]);
         let comps = Computations::prepare_computations(&i,&ray);
@@ -590,7 +593,7 @@ pub mod tests{
         let ray = Ray::new(point(0.0,0.0,-5.0),vector(0.0,0.0,1.0));
         let mut shape = Sphere::new();
         shape.set_transform(&translation(0.0,0.0,1.0));
-        let i = Intersection::new(5.0,&shape);
+        let i = Intersection::new(5.0,&(Box::new(shape) as Box<dyn ShapeThings>));
         let comps = Computations::prepare_computations(&i, &ray);
         assert_eq!(true, comps.over_point.z() < -EPSILON/2.0);
         assert_eq!(true, comps.point.z() > comps.over_point.z());

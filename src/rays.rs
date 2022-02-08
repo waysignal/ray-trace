@@ -1,9 +1,10 @@
 use std::iter::Inspect;
 use std::collections::HashMap;
+use std::any::Any;
 
 
 use crate::{Element, vector, point,matrix,Matrix};
-use crate::shapes::{Sphere,Shape,ShapeThings};
+use crate::shapes::{A,Sphere,Shape,ShapeThings};
 
 
 // Transformations
@@ -112,12 +113,25 @@ pub struct Ray {
     pub direction: Element,
 }
 
+
+
 //pub fn intersection(t:Vec<<f32>>, obj: Element);
-//#[derive(Debug, Clone)]
+#[derive(Debug,Clone)]
 pub struct Intersection<'a> {
     pub t : f32,
-    pub o : &'a Box<dyn ShapeThings>,
+    pub o : &'a Box<dyn ShapeThings>, //box bc nothing holds traits
 
+}
+
+impl<'a>PartialEq for Intersection<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.t == other.t && self.o.get_transform() == other.o.get_transform()
+        &&  self.o.get_material() == other.o.get_material()
+    }
+    // the object should be the same when this is called anyways, only t would matter (assuming here), if not
+    //we are saying that if a shape's transform and material are the same then it is the same 
+    // this is saying the intersection ITSELF is the same in the viewpoint of the ray (the ray doesnt know if it intersects another shape made of the same thing)
+    // not the shape is the same
 }
 
 impl<'a> Intersection<'a> {
@@ -129,7 +143,7 @@ impl<'a> Intersection<'a> {
         }
     }
 }
-#[derive(Debug, Clone)]
+#[derive( Debug,Clone)]
 pub struct Intersections<'a>{
     pub count: u32,
     pub h: Vec<Intersection<'a>>,
