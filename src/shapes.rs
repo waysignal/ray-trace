@@ -1,15 +1,16 @@
 use crate::canvas::Canvas;
 use crate::{Element,Matrix,point,vector,scale, equal_floats,translation};
-use crate::rays::{Ray, Intersections,Intersection,hit};
+use crate::rays::{Ray, Intersections,Intersection,hit, intersect_shape};
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
 use std::any::Any;
 
-static EPSILON: f32 = 0.005;
+static EPSILON: f64 = 0.00001;
 
 
 pub trait A {
     fn as_any(&self) -> &dyn Any;
-    //fn equals_a(&self, _: &dyn A) -> bool;
+    fn make(&self, h: Vec<f64>) -> Intersections;
+    fn equal(&self, other:& Box<dyn ShapeThings>) -> bool;
 }
 
 
@@ -29,10 +30,19 @@ pub trait A {
 
 impl A for Box<dyn ShapeThings>{
     fn as_any(&self) -> &dyn Any {
-        let s = self;
         self
     }    
-    
+    fn make(&self, h: Vec<f64>) -> Intersections{
+        let mut list = vec![];
+        for (_i,e) in h.iter().enumerate(){
+            let here = Intersection{ t: *e , o: self};
+            list.push(here);
+        }
+        Intersections { count: h.len() as u32, h: list }
+    }
+    fn equal(&self, other: & Box<dyn ShapeThings>) -> bool{
+        self.get_material() == other.get_material() && self.get_transform() == other.get_transform()
+    }
 
 }
 
@@ -42,15 +52,18 @@ impl A for Box<dyn ShapeThings>{
 
 pub trait ShapeThings: CloneFoo + Any + std::fmt::Debug { //we cannot use partialeq here bc it calls on Self, which for box<dyn..> we cannot have
     
-    fn intersect(&self,r: &Ray) -> Intersections;
+    fn intersect(&self,r: &Ray) -> Vec<f64>;
     fn get_transform(&self) -> Matrix;
     fn normal_at(&self, pos: &Element) -> Element;
     fn get_material(&self) -> Material;
     fn set_transform(&mut self,t: Matrix);
+    
+    fn this_is(self) -> Box<dyn ShapeThings>;
+
 }
 
 // shapethings:clonefoo is blanket implementation, shapethings and clonefoo are "same", a clonefoo can call on shapething's methods and visa versa
-trait CloneFoo {
+pub trait CloneFoo {
     fn clone_box(&self) -> Box<dyn ShapeThings>;
 }
 
@@ -101,10 +114,11 @@ impl Shape {
 
 impl ShapeThings for Shape{
     
-    fn intersect(&self,r: &Ray) -> Intersections{
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
 
-        eprintln!("{:?}", r.clone().transform(&self.transform.invert().unwrap()));
-        Intersections { count: 0, h: vec![] }}
+        eprintln!("{:?}", r);
+        vec![] 
+    }
     fn get_transform(&self) -> Matrix {
         self.clone().transform
     }
@@ -122,36 +136,58 @@ impl ShapeThings for Shape{
         self.transform = t_c;
 
     }
+
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+
 }
 
+
+
 #[derive(Debug,Clone,PartialEq)]
-struct Plane{
+pub struct Plane{
     pub transform: Matrix,
     pub material: Material,
 }
 
-// impl Clone for Plane{
-//     fn clone(&self) -> Plane{
-//         Plane { transform: self.transform, material: self.material }
-//     }
-// }
+impl Plane {
+    pub fn test() -> Plane{
+        Plane{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(),
+            
+        }
+    }
+}
+
 
 impl ShapeThings for Plane{
-    fn intersect(&self,r: &Ray) -> Intersections{
-        let clone = self.clone();
+
+    
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
+        
         if (r.direction.y()).abs() < EPSILON{
-            Intersections { count: 0, h: vec![]}
+            vec![]
         } else {
             let t = -r.origin.y()/r.direction.y();
             
-            Intersections { count: 1, h: vec![Intersection{ t: t, o: &Box::new(Box::new(clone) as Box<dyn ShapeThings>) }] } //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
+            vec![t]  //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
             //Plane is too defined, need to push it to trait level
         }
     }
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+    
     fn get_transform(&self) -> Matrix {
         self.clone().transform
     }
-    fn normal_at(&self, pos: &Element) -> Element{
+    fn normal_at(&self, _pos: &Element) -> Element{
         vector(0.0,1.0,0.0)
     }
     fn get_material(&self) -> Material {
@@ -188,13 +224,13 @@ impl Sphere{
 }
 
 impl ShapeThings for Sphere{
-    fn intersect(&self,r: &Ray) -> Intersections{
-        let t_r = r.clone().transform(&self.transform.invert().unwrap()); //why ref here too?, isnt obj already one?, accessing fields changes this?
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
+         //why ref here too?, isnt obj already one?, accessing fields changes this?
         
         //maybe have dot use reference so we dont have to keep repeating clone
-        let a = t_r.clone().direction.dot(t_r.clone().direction);
-        let b = 2.0 * t_r.clone().direction.dot(t_r.clone().sphere_to_ray(&self));
-        let c = t_r.clone().sphere_to_ray(&self).dot(t_r.clone().sphere_to_ray(&self)) - 1.0; 
+        let a = r.clone().direction.dot(r.clone().direction);
+        let b = 2.0 * r.clone().direction.dot(r.clone().sphere_to_ray(&self));
+        let c = r.clone().sphere_to_ray(&self).dot(r.clone().sphere_to_ray(&self)) - 1.0; 
         //radius is still 1 bc we are scaling the ray, operating in object space
         // eprintln!("t_r: {:?}", t_r); //correct
         // eprintln!("sphere loc: {:?}", obj.loc);
@@ -204,17 +240,16 @@ impl ShapeThings for Sphere{
             //b 
         let discri = b.powi(2) - 4.0 * a * c;
         if discri < 0.0 {
-            Intersections { count: 0,  h: vec![]}
+            vec![]
         } else {
             let t1 = (-b - discri.sqrt())/(2.0*a);
             let t2 = (-b + discri.sqrt())/(2.0*a);
             //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
-            let s1 =  t_r.position(t1).z();
-            let s2 =  t_r.position(t2).z(); //s's are positions of intersections
+            //let s1 =  t_r.position(t1).z();
+            //let s2 =  t_r.position(t2).z(); //s's are positions of intersections
             //distance away is given by position()
-            let i1 = Intersection::new(t1,&Box::new(Box::new(self.clone()) as Box<dyn ShapeThings>));
-            let i2 = Intersection::new(t2,&Box::new(Box::new(self.clone()) as Box<dyn ShapeThings>));
-            Intersections { count: 2,  h: vec![i1,i2]}            
+ 
+            vec![t1,t2]         
             }
         }
     fn get_transform(&self) -> Matrix {
@@ -222,13 +257,15 @@ impl ShapeThings for Sphere{
     }
 
     fn normal_at(&self, pos: &Element) -> Element {
-        let pos_0 = pos.clone(); //using clone to dereference pos (cant just do it bc it is shared), dont need to for obj bc by accessing its field, it already does so -> edit: jk need for obj too
+        //using clone to dereference pos (cant just do it bc it is shared), dont need to for obj bc by accessing its field, it already does so -> edit: jk need for obj too
         let obj_0 = self.clone();
-        let object_poi = obj_0.transform.invert().unwrap().dot(pos_0.matrix).unwrap(); //poi in object space
-        let object_nor = Element{matrix:object_poi} - point(0.0,0.0,0.0); //get normal dir of (poi and sphere) in object space, hint: finding normal from 0,0,0 (sphere)
-        let mut world_nor = obj_0.transform.invert().unwrap().transpose().dot(object_nor.matrix).unwrap(); //
-        world_nor.matrix[3][0] = 0.0;
-        Element{matrix: world_nor}.normal()
+        //let object_poi = (obj_0.transform.invert().unwrap()).dot(pos_0.matrix).unwrap(); //poi in object space
+        
+        let object_nor = pos.clone() - point(0.0,0.0,0.0); //get normal dir of (poi and sphere) in object space, hint: finding normal from 0,0,0 (sphere)
+        //let mut world_nor = ((obj_0.transform.invert().unwrap()).transpose()).dot(object_nor.matrix).unwrap(); //
+        //object_nor.matrix.matrix[3][0] = 0.0;
+        //Element{matrix: object_nor}.normal()
+        object_nor
     }
     fn get_material(&self) -> Material {
         let m_c = self.clone();
@@ -239,6 +276,12 @@ impl ShapeThings for Sphere{
         self.transform = t_c;
 
     }
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+    
 }
 
 pub fn normal_at<S: ?Sized>(obj: &S, pos: &Element) -> Element //what does it mean when size is unknown
@@ -275,10 +318,10 @@ impl PointLight{
 #[derive(Debug, Clone,PartialEq)]
 pub struct Material{
     pub color: Color,
-    pub ambient: f32,
-    pub diffuse: f32,
-    pub specular: f32,
-    pub shininess: f32,
+    pub ambient: f64,
+    pub diffuse: f64,
+    pub specular: f64,
+    pub shininess: f64,
 }
 
 impl Material{
@@ -327,13 +370,13 @@ pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,no
 
 #[derive(Debug, Clone,PartialEq)]
 pub struct Color{
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
 }
 
 impl Color{
-    pub fn new(r: f32, g: f32, b: f32) -> Color{
+    pub fn new(r: f64, g: f64, b: f64) -> Color{
         Color { r: r, g: g, b: b }
     }
     pub fn equal(self, o: Color) -> bool {
@@ -366,9 +409,9 @@ impl Add for Color{
     }
 }
 
-impl Mul<f32> for Color {
+impl Mul<f64> for Color {
     type Output = Color;
-    fn mul(self, other: f32) -> Color{
+    fn mul(self, other: f64) -> Color{
         Color { r: self.r * other,
             g: self.g * other, 
             b: self.b * other }
@@ -402,16 +445,20 @@ impl World{
         s2.set_transform(&scale(0.5,0.5,0.5));
         World { objects: vec![Box::new(s1) as Box<dyn ShapeThings> ,Box::new(s2) as Box<dyn ShapeThings>] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
     }
+////
+}
+    pub fn intersect_world<'a>(w: &'a World,r:&'a Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
 
-    pub fn intersect_world<'a>(&'a self,r:&Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
-
-        for (i,j) in self.objects.iter().enumerate(){
-            for (a,b) in j.intersect(r).h.iter().enumerate(){   //CHECK 
-                let hits = *b;
+        for (_i,j) in w.objects.iter().enumerate(){
+          
+            let j = &*j;
+            let  v = intersect_shape(r,j);
+            for (_a,b) in v.h.iter().enumerate(){   //CHECK 
+                let hits = b.clone(); //issue now bc intersect takes ownership of j
                 l.push(hits);
             }
         }
-        l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap());
+        l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
         let list_l= l.len() as u32;
         let list_s = l.clone();
         Intersections{ 
@@ -419,11 +466,11 @@ impl World{
             h: list_s,
         }
     }
-}
 
-#[derive(Clone)]
+
+#[derive(Clone, Debug)]
 pub struct Computations{
-    pub t: f32,
+    pub t: f64,
     pub object: Box<dyn ShapeThings>,
     pub point: Element,
     pub eyev: Element,
@@ -437,9 +484,9 @@ impl Computations{
     pub fn prepare_computations(i: &Intersection, r: &Ray) -> Computations
     {
         let t = i.t;
-        let object = *i.o;
+        let object = &*i.o;
         let point =r.position(t);
-        let mut normalv = normal_at(&*object, &point);
+        let mut normalv = normal_at(&**object, &point);
         let eyev= -r.clone().direction;
         let mut inside = true;
         if normalv.clone().dot(eyev.clone()) < 0.0 {
@@ -473,7 +520,7 @@ pub fn shade_hit(world: &World, comps: Computations) -> Color{
 }
 
 pub fn color_at(w: &World, r: &Ray) -> Color{
-    let mut intersections = w.intersect_world(r, vec![]);
+    let mut intersections = intersect_world(w,r, vec![]);
     let hit = hit(&mut intersections);
 
     if hit.is_none() {
@@ -492,7 +539,7 @@ pub fn view_transform(from: Element ,to: Element , up: Element) -> Matrix {
     let upn = up.normal();
     let left = forward.clone().cross(upn);
     let true_up = left.cross(forward.clone());
-    let mut orientation = Matrix::new(vec![vec![left.x(),left.y(),left.z(),0.0],
+    let orientation = Matrix::new(vec![vec![left.x(),left.y(),left.z(),0.0],
                                                 vec![true_up.x(),true_up.y(),true_up.z(),0.0],
                                                 vec![-forward.x(),-forward.y(),-forward.z(),0.0],
                                                 vec![0.0,0.0,0.0,1.0]]);
@@ -504,21 +551,21 @@ pub fn view_transform(from: Element ,to: Element , up: Element) -> Matrix {
 pub struct Camera{
     pub hsize: u32,
     pub vsize: u32,
-    pub field_of_view: f32,
+    pub field_of_view: f64,
     pub transform: Matrix,
-    pub pixel_size: f32,
-    pub half_width: f32,
-    pub half_height: f32,
+    pub pixel_size: f64,
+    pub half_width: f64,
+    pub half_height: f64,
 
 }
 
 impl Camera{
     pub fn new(hsize:u32,vsize: u32,
-        field_of_view: f32,) -> Camera {
+        field_of_view: f64,) -> Camera {
             let half_view = (field_of_view/2.0).tan();
-            let aspect = hsize as f32 /vsize as f32;
-            let mut half_width;
-            let mut half_height;
+            let aspect = hsize as f64 /vsize as f64;
+            let half_width;
+            let half_height;
             if aspect >= 1.0 {
                 half_width = half_view;
                 half_height=half_view/aspect;
@@ -526,15 +573,15 @@ impl Camera{
                 half_width = half_view*aspect;
                 half_height= half_view;
             }
-            let pixel_size = half_width * 2.0 / hsize as f32;
+            let pixel_size = half_width * 2.0 / hsize as f64;
             Camera { hsize: hsize, vsize: vsize, field_of_view: field_of_view, transform: Matrix::zero(4,4).identity(), pixel_size: pixel_size, half_height: half_height, half_width: half_width}
         }
     
     pub fn ray_for_pixel(&self,px:u32,py:u32) -> Ray {
-        let xoffset = (px as f32 +  0.5) * self.pixel_size;
-        let yoffset = (py as f32 + 0.5) * self.pixel_size;
+        let xoffset = (px as f64 +  0.5) * self.pixel_size;
+        let yoffset = (py as f64 + 0.5) * self.pixel_size;
 
-        let world_x = self.half_width - xoffset; //f32 has copy trait
+        let world_x = self.half_width - xoffset; //f64 has copy trait
         let world_y = self.half_height - yoffset;
 
         let inverse_t = self.transform.invert().unwrap();
@@ -568,7 +615,7 @@ pub fn is_shadowed(world: &World, point: &Element) -> bool {
     let direction = v.normal();
 
     let ray = Ray::new(point,direction);
-    let mut intersections = world.intersect_world(&ray, vec![]); //removed clone from world -> temp value is now not freed?
+    let mut intersections = intersect_world(&world,&ray, vec![]); //removed clone from world -> temp value is now not freed?
     let hit = hit(&mut intersections);
     if hit.is_none() {
         false

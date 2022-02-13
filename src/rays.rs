@@ -1,18 +1,18 @@
-use std::iter::Inspect;
+
 use std::collections::HashMap;
-use std::any::Any;
 
 
-use crate::{Element, vector, point,matrix,Matrix};
-use crate::shapes::{A,Sphere,Shape,ShapeThings};
+
+use crate::{Element,Matrix};
+use crate::shapes::{Sphere,ShapeThings, A};
 
 
 // Transformations
-// pub fn transform(r: &Ray, f: fn(f32,f32,f32) -> Matrix, ) -> Ray {
+// pub fn transform(r: &Ray, f: fn(f64,f64,f64) -> Matrix, ) -> Ray {
 //     let r_c = r.clone();
 //     Ray {
-//         origin: r_c.origin.f(f32,f32,f32),
-//         direction: r_c.direction.f(f32,f32,f32)
+//         origin: r_c.origin.f(f64,f64,f64),
+//         direction: r_c.direction.f(f64,f64,f64)
 //     }
 // }
 
@@ -27,7 +27,7 @@ pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
     }
 
     let t_h = &mut t.h;
-    t_h.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap());
+    t_h.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
     let mut this_one = None;
     'check: for i in 0..(t.count as usize) {
         if t_h[i].t > 0.0 {
@@ -101,7 +101,9 @@ pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
 pub fn intersect_shape<'a>(r: &Ray, obj: &'a Box<dyn ShapeThings>) -> Intersections<'a>{
     
     let local_ray = r.transform(&obj.get_transform().invert().unwrap());
-    obj.intersect(&local_ray) //use lifetime bc using reference to get around the cannot return something owned by the function constraint
+   
+    let xs = obj.intersect(&local_ray); //use lifetime bc using reference to get around the cannot return something owned by the function constraint
+    obj.make(xs) 
     
 }
 
@@ -115,18 +117,22 @@ pub struct Ray {
 
 
 
-//pub fn intersection(t:Vec<<f32>>, obj: Element);
+//pub fn intersection(t:Vec<<f64>>, obj: Element);
 #[derive(Debug,Clone)]
 pub struct Intersection<'a> {
-    pub t : f32,
+    pub t : f64,
     pub o : &'a Box<dyn ShapeThings>, //box bc nothing holds traits
+ 
 
 }
 
+
+
+
 impl<'a>PartialEq for Intersection<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.t == other.t && self.o.get_transform() == other.o.get_transform()
-        &&  self.o.get_material() == other.o.get_material()
+        self.t == other.t && self.o.get_transform() == other.o.get_transform() && self.o.get_material() == other.o.get_material()
+       
     }
     // the object should be the same when this is called anyways, only t would matter (assuming here), if not
     //we are saying that if a shape's transform and material are the same then it is the same 
@@ -135,11 +141,12 @@ impl<'a>PartialEq for Intersection<'a> {
 }
 
 impl<'a> Intersection<'a> {
-    pub fn new(t: f32,o: &'a Box<dyn ShapeThings>) -> Intersection<'a>{
-
+    //pub fn new(t: f64,o: &'a Box<dyn ShapeThings>) -> Intersection<'a>{
+    pub fn new(t: f64, o : &'a Box<dyn ShapeThings>) -> Intersection<'a>{
         Intersection{
             t: t,
             o: o,
+
         }
     }
 }
@@ -158,6 +165,9 @@ impl<'a> Intersections<'a>{
 
         }
     }
+    pub fn empty() -> Intersections<'a>{
+        Intersections { count: 0, h: vec![] }
+    }
 }
 
 impl Ray{
@@ -175,7 +185,7 @@ impl Ray{
         self.direction
     }
 
-    pub fn position(&self, t: f32) -> Element{
+    pub fn position(&self, t: f64) -> Element{
         let temp = self.clone();
         let temp2 = self.clone();
         temp.ori() + temp2.dir() * t

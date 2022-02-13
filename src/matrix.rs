@@ -4,7 +4,7 @@
 //     use crate::{Element, Matrix, point, vector};
 //     pub trait Operations
 //     {
-//         fn translation(&self,x:f32,y:f32,z:f32) -> Self;
+//         fn translation(&self,x:f64,y:f64,z:f64) -> Self;
 //         //looking at trait objects to be able to call translation on both Ray and Matrix without duplicating code
 //         //cannot have functions that return different things, cannot be resolved dynamically?
 //         //sike dont actually need this whole block
@@ -15,7 +15,7 @@
 //     }
 
 //     impl<T> TEMP<T> {
-//         fn translation(&self,x:f32,y:f32,z:f32) -> T{
+//         fn translation(&self,x:f64,y:f64,z:f64) -> T{
 
 //         }    
 //     }
@@ -27,20 +27,20 @@
 
 pub mod matrix{
     use std::ops::{Neg,Div};
-    static EPSILON: f32 = 0.00001;
+    static EPSILON: f64 = 0.00001;
 
 
 
 
     #[derive(Debug, Clone,PartialEq)]
     pub struct Matrix{
-        pub matrix:  Vec<Vec<f32>>, //array on stack will be dropped anyways
+        pub matrix:  Vec<Vec<f64>>, //array on stack will be dropped anyways
         pub rows: usize,                            // pub bc want to access anyways
         pub cols: usize,
         //changed this from u64 to usize to save
     }
 
-    pub fn equal_floats(a:&f32,b:&f32) -> bool {
+    pub fn equal_floats(a:&f64,b:&f64) -> bool {
         if (a.abs()-b.abs()) < EPSILON{
             true   
         } else {
@@ -49,7 +49,7 @@ pub mod matrix{
     }
 
 
-    pub fn translation(x:f32,y:f32,z:f32) -> Matrix {
+    pub fn translation(x:f64,y:f64,z:f64) -> Matrix {
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[0][3] = x;
         transform.matrix[1][3] = y;
@@ -57,7 +57,7 @@ pub mod matrix{
         transform
     }
 
-    pub fn scale(x:f32,y:f32,z:f32) -> Matrix{
+    pub fn scale(x:f64,y:f64,z:f64) -> Matrix{
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[0][0] = x;
         transform.matrix[1][1] = y;
@@ -66,7 +66,7 @@ pub mod matrix{
         //transform.dot(self).unwrap()  
     }
 
-    pub fn rotate_x(rad: f32) -> Matrix{
+    pub fn rotate_x(rad: f64) -> Matrix{
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[1][1] = rad.cos();
         transform.matrix[1][2] = -rad.sin();
@@ -75,7 +75,7 @@ pub mod matrix{
         transform  
     }
 
-    pub fn rotate_y(rad: f32) -> Matrix{
+    pub fn rotate_y(rad: f64) -> Matrix{
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[0][0] = rad.cos();
         transform.matrix[0][2] = rad.sin();
@@ -84,7 +84,7 @@ pub mod matrix{
         transform  
     }
 
-    pub fn rotate_z(rad: f32) -> Matrix{
+    pub fn rotate_z(rad: f64) -> Matrix{
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[0][0] = rad.cos();
         transform.matrix[0][1] = -rad.sin();
@@ -93,7 +93,7 @@ pub mod matrix{
         transform
     }
 
-    pub fn shearing(xy:f32,xz:f32,yx:f32,yz:f32,zx:f32,zy:f32) -> Matrix{
+    pub fn shearing(xy:f64,xz:f64,yx:f64,yz:f64,zx:f64,zy:f64) -> Matrix{
         let mut transform = Matrix::zero(4,4).identity();
         transform.matrix[0][1] = xy;
         transform.matrix[0][2] = xz;
@@ -106,7 +106,7 @@ pub mod matrix{
 
     impl Matrix{
 
-        pub fn new(mat: Vec<Vec<f32>>) -> Matrix{
+        pub fn new(mat: Vec<Vec<f64>>) -> Matrix{
             let m = mat.len();
             let n = mat[0].len();
             Matrix{
@@ -134,7 +134,7 @@ pub mod matrix{
             }
         }
 
-        pub fn get(&self, m: usize, n: usize) -> f32{
+        pub fn get(&self, m: usize, n: usize) -> f64{
             self.matrix[m][n] 
             // go into mth row and then nth column
         }
@@ -210,7 +210,7 @@ pub mod matrix{
             place
         }
 
-        pub fn det(&self) -> Option<f32>{
+        pub fn det(&self) -> Option<f64>{
             let mut deter_f = 0.0;
             if (self.rows != self.cols) || self.rows == (0 as usize) || self.rows == (1 as usize) {
                 None
@@ -241,12 +241,12 @@ pub mod matrix{
             subm.transpose() //transpose auto updates
         }
 
-        pub fn minor(&self, row: usize, col: usize) -> f32{
+        pub fn minor(&self, row: usize, col: usize) -> f64{
             let subm = self.submatrix(row, col);
             subm.det().unwrap()
         }
 
-        pub fn cofactor(&self, row: usize, col: usize) -> f32{
+        pub fn cofactor(&self, row: usize, col: usize) -> f64{
             if let 0 = (row  + col)%2 {
                 self.minor(row,col) 
             } else {
@@ -279,9 +279,9 @@ pub mod matrix{
         
     }
 
-    impl Div<f32> for Matrix{
+    impl Div<f64> for Matrix{
         type Output = Matrix;
-        fn div(mut self, other: f32) -> Matrix{
+        fn div(mut self, other: f64) -> Matrix{
             for m in 0..self.rows{
                 for n in 0..self.cols{ 
                     self.matrix[m][n] = self.matrix[m][n]/other;

@@ -1,33 +1,33 @@
-use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
+use std::{ops::{ Add, Sub, Neg, Mul}, vec};
 use crate::Matrix;
 #[derive(Debug, Clone,PartialEq)]
 pub struct Element {
     pub matrix: Matrix
 }
 
-pub fn vector (e0:f32 , e1:f32 , e2:f32) -> Element{
+pub fn vector (e0:f64 , e1:f64 , e2:f64) -> Element{
     Element{
-        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![0.0_f32.clamp(0.0,1.0)]])
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![0.0_f64.clamp(0.0,1.0)]])
     }
 }
 
-pub fn point (e0:f32 , e1:f32 , e2:f32) -> Element{
+pub fn point (e0:f64 , e1:f64 , e2:f64) -> Element{
     Element{
-        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0_f32.clamp(0.0,1.0)]])
+        matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0_f64.clamp(0.0,1.0)]])
     }
 }
 
 impl Element {
-    pub fn new(e0:f32, e1:f32 , e2:f32 , t:f32 ) -> Element{
+    pub fn new(e0:f64, e1:f64 , e2:f64 , t:f64 ) -> Element{
         Element{
             matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![t.clamp(0.0,1.0)]])
         }
     }
 
-    pub fn grabtype (&self) -> f32 {
+    pub fn grabtype (&self) -> f64 {
         self.matrix.matrix[3][0]
     }
-    pub fn grabloc (&self) -> Vec<f32> {
+    pub fn grabloc (&self) -> Vec<f64> {
         let mut loc = vec![];
         for x in 0..(self.matrix.rows-1){
             loc.push(self.matrix.matrix[x][0])
@@ -35,24 +35,24 @@ impl Element {
         loc
     }
 
-    pub fn x (&self) -> f32 {
+    pub fn x (&self) -> f64 {
         self.matrix.matrix[0][0]
     }
 
-    pub fn y (&self) -> f32 {
+    pub fn y (&self) -> f64 {
         self.matrix.matrix[1][0]
     }
 
-    pub fn z (&self) -> f32 {
+    pub fn z (&self) -> f64 {
         self.matrix.matrix[2][0]
     }
 
-    pub fn magnitude(&self) -> f32 {
+    pub fn magnitude(&self) -> f64 {
         (self.x().powi(2) + self.y().powi(2) + self.z().powi(2)).sqrt()
     }
 
     pub fn normal(&self) -> Element {
-        let mag:f32 = self.magnitude();
+        let mag:f64 = self.magnitude();
         Element { 
             matrix: Matrix::new(vec![vec![self.x()*(1.0/mag)], vec![self.y() *(1.0/mag)], vec![self.z() *(1.0/mag)], vec![self.grabtype()*(1.0/mag).clamp(0.0,1.0)]])
            
@@ -72,7 +72,7 @@ impl Element {
 
     }
 
-    pub fn dot(&self, other: Element) -> f32{
+    pub fn dot(&self, other: Element) -> f64{
         self.grabloc().iter().zip(other.grabloc().iter()).map(|(x, y)| x * y).sum()
     }
 
@@ -125,9 +125,9 @@ impl Neg for Element {
     
 }
 
-impl Mul<f32> for Element {
+impl Mul<f64> for Element {
     type Output = Element;
-    fn mul(self, other: f32) -> Element{
+    fn mul(self, other: f64) -> Element{
         Element {
             matrix: Matrix::new( vec![vec![self.x() * other], 
             vec![self.y() * other],
@@ -140,7 +140,7 @@ impl Mul<f32> for Element {
 }
 
 
-impl Mul<Element> for f32 {
+impl Mul<Element> for f64 {
     type Output = Element;
     fn mul(self, other: Element) -> Element{
         Element {
@@ -156,8 +156,8 @@ impl Mul<Element> for f32 {
 
 /*impl Index<usize> for Element {
     //usize is a valid index
-    type Output = f32;
-    fn index(&self, index: usize) -> &f32 {
+    type Output = f64;
+    fn index(&self, index: usize) -> &f64 {
         &self.loc[index]
     }
 
