@@ -7,6 +7,270 @@ use std::any::Any;
 static EPSILON: f64 = 0.00001;
 
 
+#[derive(Debug,Clone,PartialEq)]
+pub struct CheckersPattern{
+    a: Color,
+    b: Color,
+    transform: Matrix,
+}
+impl Pattern for CheckersPattern{
+
+        fn box_me(self) -> Box<dyn Pattern>{
+            Box::new(self) as Box<dyn Pattern>
+        }
+    
+        fn get_transform(&self) -> Matrix{
+            self.clone().transform
+        } 
+    
+        fn set_transform(&mut self,t: Matrix){
+            let t_c = t.clone();
+            self.transform = t_c;
+        }
+        fn pattern_at(&self,p: Element) -> Color {
+            if (p.x().floor() + p.y().floor() + p.z().floor())%2.0 == 0.0 {
+                self.get_a()
+            } else{
+                self.get_b()
+            }
+        }
+    
+        fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color  {
+            let obj_point = obj.get_transform().invert().unwrap().dot(world_point.matrix).unwrap();
+            let pattern_point = Element{ matrix: self.get_transform().invert().unwrap().dot(obj_point).unwrap()};
+            self.pattern_at(pattern_point)
+    
+        }
+}
+impl CheckersPattern{
+    pub fn new(a: Color, b: Color) -> CheckersPattern{
+        CheckersPattern{a: a, b: b, transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn base() -> CheckersPattern{
+        CheckersPattern{a: Color::white(), b: Color::black(), transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn get_a(&self) -> Color{
+        self.clone().a
+    } 
+    pub fn get_b(&self) -> Color{
+        self.clone().b
+    } 
+}
+
+
+
+
+
+
+#[derive(Debug,Clone,PartialEq)]
+pub struct RingPattern{
+    a: Color,
+    b: Color,
+    transform: Matrix,
+}
+impl Pattern for RingPattern{
+
+        fn box_me(self) -> Box<dyn Pattern>{
+            Box::new(self) as Box<dyn Pattern>
+        }
+    
+        fn get_transform(&self) -> Matrix{
+            self.clone().transform
+        } 
+    
+        fn set_transform(&mut self,t: Matrix){
+            let t_c = t.clone();
+            self.transform = t_c;
+        }
+        fn pattern_at(&self,p: Element) -> Color {
+            if (p.x().powf(2.0)+p.z().powf(2.0)).sqrt().floor()%2.0 == 0.0 {
+                self.get_a()
+            } else{
+                self.get_b()
+            }
+        }
+    
+        fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color  {
+            let obj_point = obj.get_transform().invert().unwrap().dot(world_point.matrix).unwrap();
+            let pattern_point = Element{ matrix: self.get_transform().invert().unwrap().dot(obj_point).unwrap()};
+            self.pattern_at(pattern_point)
+    
+        }
+}
+impl RingPattern{
+    pub fn new(a: Color, b: Color) -> RingPattern{
+        RingPattern{a: a, b: b, transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn base() -> RingPattern{
+        RingPattern{a: Color::white(), b: Color::black(), transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn get_a(&self) -> Color{
+        self.clone().a
+    } 
+    pub fn get_b(&self) -> Color{
+        self.clone().b
+    } 
+}
+
+#[derive(Debug,Clone,PartialEq)]
+pub struct GradientPattern{
+    a: Color,
+    b: Color,
+    transform: Matrix,
+}
+impl Pattern for GradientPattern{
+
+        fn box_me(self) -> Box<dyn Pattern>{
+            Box::new(self) as Box<dyn Pattern>
+        }
+    
+        fn get_transform(&self) -> Matrix{
+            self.clone().transform
+        } 
+    
+        fn set_transform(&mut self,t: Matrix){
+            let t_c = t.clone();
+            self.transform = t_c;
+        }
+        fn pattern_at(&self,p: Element) -> Color {
+            let distance = self.get_b() - self.get_a();
+            eprintln!("{:?}",distance);
+            let fraction = p.x() - p.x().floor();
+
+            self.get_a() + (distance * fraction)
+        }
+    
+        fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color  {
+            let obj_point = obj.get_transform().invert().unwrap().dot(world_point.matrix).unwrap();
+            let pattern_point = Element{ matrix: self.get_transform().invert().unwrap().dot(obj_point).unwrap()};
+            self.pattern_at(pattern_point)
+    
+        }
+}
+impl GradientPattern{
+    pub fn new(a: Color, b: Color) -> GradientPattern{
+        GradientPattern{a: a, b: b, transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn base() -> GradientPattern{
+        GradientPattern{a: Color::white(), b: Color::black(), transform: Matrix::zero(4,4).identity()}
+    }
+    pub fn get_a(&self) -> Color{
+        self.clone().a
+    } 
+    pub fn get_b(&self) -> Color{
+        self.clone().b
+    } 
+}
+pub trait Pattern: ClonePattern + std::fmt::Debug{
+    fn pattern_at(&self,p: Element) -> Color;
+    fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color;
+    fn get_transform(&self) -> Matrix;
+    fn set_transform(&mut self,t: Matrix);
+    fn box_me(self) -> Box<dyn Pattern>;
+
+
+}
+
+impl Pattern for StripePattern{
+    fn box_me(self) -> Box<dyn Pattern>{
+        Box::new(self) as Box<dyn Pattern>
+    }
+
+    fn get_transform(&self) -> Matrix{
+        self.clone().transform
+    } 
+
+    fn set_transform(&mut self,t: Matrix){
+        let t_c = t.clone();
+        self.transform = t_c;
+    }
+    fn pattern_at(&self,p: Element) -> Color {
+        if p.x().floor()%2.0 == 0.0 {
+            self.get_a()
+        } else{
+            self.get_b()
+        }
+    }
+
+    fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color  {
+        let obj_point = obj.get_transform().invert().unwrap().dot(world_point.matrix).unwrap();
+        let pattern_point = Element{ matrix: self.get_transform().invert().unwrap().dot(obj_point).unwrap()};
+        self.pattern_at(pattern_point)
+
+    }
+
+}
+#[derive(Debug,Clone,PartialEq)]
+pub struct TestPattern{
+    transform: Matrix,
+}
+impl Pattern for TestPattern{
+
+        fn box_me(self) -> Box<dyn Pattern>{
+            Box::new(self) as Box<dyn Pattern>
+        }
+    
+        fn get_transform(&self) -> Matrix{
+            self.clone().transform
+        } 
+    
+        fn set_transform(&mut self,t: Matrix){
+            let t_c = t.clone();
+            self.transform = t_c;
+        }
+        fn pattern_at(&self,p: Element) -> Color {
+            Color::new(p.x(),p.y(),p.z())
+        }
+    
+        fn pattern_at_shape(&self, obj: & Box<dyn ShapeThings>, world_point: Element) -> Color  {
+            let obj_point = obj.get_transform().invert().unwrap().dot(world_point.matrix).unwrap();
+            let pattern_point = Element{ matrix: self.get_transform().invert().unwrap().dot(obj_point).unwrap()};
+            self.pattern_at(pattern_point)
+    
+        }
+}
+impl TestPattern{
+    pub fn new() -> TestPattern{
+        TestPattern{transform: Matrix::zero(4,4).identity()}
+    }
+}
+
+#[derive(Debug,Clone,PartialEq)]
+pub struct StripePattern {
+    pub a: Color,
+    pub b: Color,
+    pub transform: Matrix,
+
+}
+
+impl StripePattern {
+    pub fn get_a(&self) -> Color{
+        self.clone().a
+    } 
+    pub fn get_b(&self) -> Color{
+        self.clone().b
+    } 
+    
+    pub fn new(a: Color, b: Color) -> StripePattern{
+        StripePattern{
+            a: a,
+            b: b,
+            transform: Matrix::zero(4,4).identity(),
+        }
+    }
+    pub fn base() -> StripePattern{
+        StripePattern::new(Color::white(),Color::black())
+    }
+
+    
+}
+
+
+
+
+
+
+
 pub trait A {
     fn as_any(&self) -> &dyn Any;
     fn make(&self, h: Vec<f64>) -> Intersections;
@@ -88,7 +352,23 @@ implement Clone trait for box, which is override (calls on the clone box method,
     //edit: we lose granularity at the type level bc we ONLY know the trait, the type could be any with their own any methods; so now we have to define Clone where
     it does not require the use of returning Self (bc it is not object safe to return Self since the original type is forgotten)
 */
+pub trait ClonePattern {
+    fn clone_box(&self) -> Box<dyn Pattern>;
+}
 
+impl<T> ClonePattern for T
+    where T: 'static + Pattern + Clone,
+{
+    fn clone_box(&self) -> Box<dyn Pattern> { //dyn requires at run time to look up which method to call on which type that implements the trait
+        Box::new(self.clone())
+    }
+}
+//defining Clone for Box<>
+impl Clone for Box<dyn Pattern> {
+    fn clone(&self) -> Box<dyn Pattern> {
+        self.clone_box()
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
     pub transform: Matrix,
@@ -322,21 +602,31 @@ pub struct Material{
     pub diffuse: f64,
     pub specular: f64,
     pub shininess: f64,
+    pub pattern: Option<Box<dyn Pattern>>,
 }
 
+impl PartialEq for Box<dyn Pattern>  {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_transform() == other.get_transform() 
+       
+    }
+}
 impl Material{
     pub fn new() -> Material{
-        Material { color: Color::new(1.0,1.0,1.0), ambient: 0.1 , diffuse: 0.9, specular: 0.9, shininess: 200.0 }
+        Material { color: Color::new(1.0,1.0,1.0), ambient: 0.1 , diffuse: 0.9, specular: 0.9, shininess: 200.0 ,pattern: None }
     }
 }
 
 
 
-pub fn lighting(m: Material,light:&PointLight,position: Element,eyev: Element,normalv:Element,in_shadow:bool) -> Color {
+pub fn lighting(m: Material, object: &Box<dyn ShapeThings>, light:&PointLight,position: Element,eyev: Element,normalv:Element,in_shadow:bool) -> Color  {
     //let e = Element {matrix: m.color.matrix.dot(light.clone().intensity.matrix).unwrap()};
-    
+    let mut color = m.color;
+    if m.pattern.is_some(){
+        color = m.pattern.unwrap().pattern_at_shape(object, position.clone());
+    }
     let light = light.clone();
-    let effective_color = m.color * light.clone().intensity;
+    let effective_color = color * light.clone().intensity;
     let lightv = (light.clone().position - position).normal();
     let ambient =  effective_color.clone() * m.ambient ;
     let light_dot_normal = lightv.dot(normalv.clone());
@@ -379,6 +669,8 @@ impl Color{
     pub fn new(r: f64, g: f64, b: f64) -> Color{
         Color { r: r, g: g, b: b }
     }
+    pub fn black() -> Color { Color{r: 0.0, g: 0.0, b: 0.0}}
+    pub fn white() -> Color { Color{r: 1.0, g: 1.0, b: 1.0}}
     pub fn equal(self, o: Color) -> bool {
         
         let l = vec![equal_floats(&self.r,&o.r), equal_floats(&self.g,&o.g) , equal_floats(&self.b,&o.b)];
@@ -393,9 +685,9 @@ impl Color{
 impl Sub for Color{
     type Output = Color;
     fn sub(self, other: Color) -> Color{
-        Color { r: self.r - other.r,
-                g: self.g - other. g, 
-                b: self.b - other.b }
+        Color { r: (self.r - other.r).clamp(-1.0,1.0),
+            g: (self.g - other. g).clamp(-1.0,1.0), 
+            b: (self.b - other.b).clamp(-1.0,1.0)  }
     }
 }
 
@@ -403,18 +695,18 @@ impl Sub for Color{
 impl Add for Color{
     type Output = Color;
     fn add(self, other: Color) -> Color{
-        Color { r: self.r + other.r,
-                g: self.g + other. g, 
-                b: self.b + other.b }
+        Color { r: (self.r + other.r).clamp(-1.0,1.0),
+                g: (self.g + other. g).clamp(-1.0,1.0), 
+                b: (self.b + other.b).clamp(-1.0,1.0) }
     }
 }
 
 impl Mul<f64> for Color {
     type Output = Color;
     fn mul(self, other: f64) -> Color{
-        Color { r: self.r * other,
-            g: self.g * other, 
-            b: self.b * other }
+        Color { r: (self.r * other).clamp(-1.0,1.0),
+            g: (self.g * other).clamp(-1.0,1.0), 
+            b: (self.b * other).clamp(-1.0,1.0)}
     }
 }
 
@@ -422,9 +714,9 @@ impl Mul<f64> for Color {
 impl Mul<Color> for Color {
     type Output = Color;
     fn mul(self, other: Color) -> Color{
-        Color { r: self.r * other.r,
-            g: self.g * other.g, 
-            b: self.b * other.b }
+        Color { r: (self.r * other.r).clamp(-1.0,1.0),
+            g: (self.g * other. g).clamp(-1.0,1.0), 
+            b: (self.b * other.b).clamp(-1.0,1.0) }
     }
 }
 
@@ -514,9 +806,9 @@ impl Computations{
 }
 
 
-pub fn shade_hit(world: &World, comps: Computations) -> Color{
+pub fn shade_hit(world: &World, obj: & Box<dyn ShapeThings> , comps: Computations) -> Color{
     let shadowed = is_shadowed(world, &comps.over_point);
-    lighting(comps.object.get_material(), &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
+    lighting(comps.object.get_material(), obj, &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
 }
 
 pub fn color_at(w: &World, r: &Ray) -> Color{
@@ -527,7 +819,7 @@ pub fn color_at(w: &World, r: &Ray) -> Color{
         Color::new(0.0,0.0,0.0)
     } else {
         let comp = Computations::prepare_computations(hit.unwrap(),r);
-        shade_hit(w,comp)
+        shade_hit(w,hit.unwrap().o ,comp)
 
 
     }

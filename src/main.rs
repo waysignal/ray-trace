@@ -11,7 +11,7 @@ use tuples::{Element, vector, point};
 use canvas::{Canvas};
 use matrix::matrix::*;
 use rays::{Ray,hit};
-use shapes::{Sphere, Material,Color, PointLight,normal_at,lighting,Computations,World, Camera, view_transform,render,Plane, ShapeThings};
+use shapes::{CheckersPattern,RingPattern,GradientPattern,TestPattern,Pattern,StripePattern,Sphere, Material,Color, PointLight,normal_at,lighting,Computations,World, Camera, view_transform,render,Plane, ShapeThings};
 
 
 
@@ -37,6 +37,7 @@ fn main() {
     middle.material.color = Color::new(0.1,1.0,0.5);
     middle.material.diffuse = 0.7;
     middle.material.specular = 0.3;
+    middle.material.pattern = Some(StripePattern::new(Color::white(), Color::black()).box_me());
 
     let mut right = Sphere::new();
     right.transform = translation(1.5, 0.5, -0.5).dot(scale(0.5,0.5,0.5)).unwrap();
@@ -50,7 +51,8 @@ fn main() {
     left.material.diffuse = 0.7;
     left.material.specular = 0.3;
     
-    let p = Plane::test();
+    let mut p = Plane::test();
+    p.material.pattern = Some(RingPattern::new(Color::white(), Color::black()).box_me());
 
     let world = World{ light_source: PointLight::new(point(-10.0,10.0,-10.0),Color::new(1.0,1.0,1.0)),
                         objects: vec![Box::new(p),Box::new(right),Box::new(left), Box::new(middle)] };

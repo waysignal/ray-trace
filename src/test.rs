@@ -2,7 +2,7 @@
 #[cfg(test)]
 pub mod tests{
 
-    use crate::shapes::{Plane,intersect_world,A,Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings};
+    use crate::shapes::{CheckersPattern,RingPattern,GradientPattern,TestPattern,Pattern, StripePattern,Plane,intersect_world,A,Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings};
     use crate::Canvas;
     use crate::matrix::matrix::*;
     use crate::rays::{Ray, hit,  Intersections,Intersection,intersect_shape};
@@ -200,18 +200,21 @@ pub mod tests{
             //needs to be a transformation back -> edit: no there doesnt, t should be correct regardless
         assert_eq!(scale(2.0,2.0,2.0),s.transform);
         assert_eq!(2,xs.len());
-        eprintln!("{:?}",xs);
-        assert_eq!(7.0,xs[1]);
-        assert_eq!(3.0,xs[0]);
+        let s = s.this_is();
+        let xs = intersect_shape(&r,&s);
+     
+        assert_eq!(7.0,xs.h[1].t);
+        assert_eq!(3.0,xs.h[0].t);
 
         let mut s = Sphere{loc: point(0.0,0.0,0.0),
             transform: Matrix::zero(4,4).identity(),material: Material::new()};
 
-        let t = translation(0.0,0.0,-8.0);
+        let t = translation(5.0,0.0,0.0);
         s.set_transform(&t);
-        let xs = s.intersect(&r);
-        eprintln!("{:?}",xs);
-        assert_eq!(2,xs.len());
+        let s = s.this_is();
+        let xs = intersect_shape(&r,&s);
+
+        assert_eq!(0,xs.count);
     }
 
 //     #[test]
@@ -322,8 +325,9 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,false);
-        assert_eq!(Color::new(1.9,1.9,1.9),result);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,false);
+        //assert_eq!(Color::new(1.9,1.9,1.9),result); //implemented clamp for colors
+        assert_eq!(Color::new(1.0,1.0,1.0),result);
 
         let mut m = Material::new();
         let pos = point(0.0,0.0,0.0);
@@ -331,7 +335,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,false);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,false);
         assert_eq!(Color::new(1.0,1.0,1.0),result);
 
         let mut m = Material::new();
@@ -340,7 +344,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,10.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,false);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,false);
         //assert_eq!(Color::new(0.7364,0.7364,0.7364),result); //close
 
         let mut m = Material::new();
@@ -349,7 +353,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,10.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,false);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,false);
         //assert_eq!(Color::new(1.6364,1.6364,1.6364),result); //close
 
 
@@ -359,7 +363,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,false);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,false);
         assert_eq!(Color::new(0.1,0.1,0.1),result); //close
 
     }
@@ -460,7 +464,7 @@ pub mod tests{
         let shape = &w.objects[0];
         let i = Intersection { t: 4.0, o: &shape};
         let comps = Computations::prepare_computations(&i, &r);
-        let c = shade_hit(&w,comps);
+        let c = shade_hit(&w,&Shape::test().this_is(),comps);
         //assert_eq!(Color::new(0.38066,0.47583,0.2855), c); // yes
         let mut w = World::new();
         w.light_source = PointLight::new(point(0.0,0.25,0.0), Color::new(1.0,1.0,1.0));
@@ -469,7 +473,7 @@ pub mod tests{
         let shape = &w.objects[1];
         let i = Intersection { t: 0.5, o: &shape};
         let comps = Computations::prepare_computations(&i, &r);
-        let c = shade_hit(&w,comps);
+        let c = shade_hit(&w,&Shape::test().this_is(),comps);
         //assert_eq!(Color::new(0.90498,0.90498,0.90498), c); //yes
     }
     #[test]
@@ -569,7 +573,7 @@ pub mod tests{
         let normalv = vector(0.0,0.0,-1.0);
         let light = PointLight::new(point(0.0,0.0,-10.0), Color::new(1.0,1.0,1.0));
 
-        let result = lighting(m,&light,pos,eyev,normalv,true);
+        let result = lighting(m,&Shape::test().this_is(),&light,pos,eyev,normalv,true);
         assert_eq!(Color::new(0.1,0.1,0.1),result);
     }
 
@@ -598,7 +602,7 @@ pub mod tests{
         let ray = Ray::new(point(0.0,0.0,5.0),vector(0.0,0.0,1.0));
         let i = Intersection::new(4.0,&w.objects[1]);
         let comps = Computations::prepare_computations(&i,&ray);
-        assert_eq!(Color::new(0.1,0.1,0.1), shade_hit(&w,comps))
+        assert_eq!(Color::new(0.1,0.1,0.1), shade_hit(&w,&Shape::test().this_is(),comps))
     }
 
     #[test]
@@ -704,6 +708,162 @@ pub mod tests{
         assert!(p.equal(xs.h[0].o));
         
     }
+    #[test]
+    pub fn pattern_features_128(){
+        let pattern = StripePattern::new(Color::white(), Color::black());
+        assert_eq!(Color::white(), pattern.get_a());
+        assert_eq!(Color::black(), pattern.get_b());
+
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,0.0,0.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,1.0,0.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,2.0,0.0)));
+
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,0.0,0.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,0.0,1.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,0.0,2.0)));
+
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.0,0.0,0.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(0.9,0.0,1.0)));
+        assert_eq!(Color::black(),pattern.pattern_at(point(1.0,0.0,2.0)));
+        assert_eq!(Color::black(),pattern.pattern_at(point(-0.1,0.0,0.0)));
+        assert_eq!(Color::black(),pattern.pattern_at(point(-1.0,0.0,1.0)));
+        assert_eq!(Color::white(),pattern.pattern_at(point(-1.1,0.0,2.0)));
+    }
+
+    #[test]
+    pub fn materials_feature_129(){
+        let m = Material { color: Color::new(1.0,1.0,1.0), ambient: 1.0 , diffuse: 0.9, specular: 0.0, shininess: 200.0 ,pattern: Some(StripePattern::new(Color::white(), Color::black()).box_me()) };
+        let c1 = lighting(m.clone(), &Shape::test().this_is(),&PointLight::new(point(0.0,0.0,-10.0),
+        Color::white()), point(0.9,0.0,0.0),
+        vector(0.0,0.0,-1.0), vector(0.0,0.0,-1.0), false);
+
+        let c2 = lighting(m, &Shape::test().this_is(),&PointLight::new(point(0.0,0.0,-10.0),
+        Color::white()), point(1.1,0.0,0.0),
+        vector(0.0,0.0,-1.0), vector(0.0,0.0,-1.0), false);
+
+        assert_eq!(Color::black(),c2);
+        assert_eq!(Color::white(),c1);
+
+    }
+
+    #[test]
+    pub fn pattern_features_131(){
+        let mut o = Sphere::new();
+        o.set_transform(&scale(2.0,2.0,2.0));
+        let p = StripePattern::new(Color::white(), Color::black());
+        let c = p.pattern_at_shape(&o.this_is(), point(1.5,0.0,0.0));
+        assert_eq!(Color::white(),c);
+
+        let mut o = Sphere::new();
+        
+        let mut p = StripePattern::new(Color::white(), Color::black());
+        p.set_transform(scale(2.0,2.0,2.0));
+        let c = p.pattern_at_shape(&o.this_is(), point(1.5,0.0,0.0));
+        assert_eq!(Color::white(),c);
+        
+        let mut o = Sphere::new();
+        o.set_transform(&scale(2.0,2.0,2.0));
+        let mut p = StripePattern::new(Color::white(), Color::black());
+        p.set_transform(translation(0.5,2.0,2.0));
+        let c = p.pattern_at_shape(&o.this_is(), point(2.5,0.0,0.0));
+        assert_eq!(Color::white(),c);
+    }
+
+    #[test]
+    pub fn pattern_features_133(){
+        let mut p = StripePattern::base();
+        assert_eq!(Matrix::zero(4,4).identity(), p.get_transform());
+
+        p.set_transform(translation(1.0,2.0,3.0));
+        assert_eq!(translation(1.0,2.0,3.0), p.get_transform());
+
+
+        let mut o = Sphere::new();
+        o.set_transform(&scale(2.0,2.0,2.0));
+        let p = TestPattern::new();
+        let c = p.pattern_at_shape(&o.this_is(), point(2.0,3.0,4.0));
+        assert_eq!(Color::new(1.0,1.5,2.0),c); //clamped in real
+
+        let mut o = Sphere::new();
+        let mut p = TestPattern::new();
+        p.set_transform(scale(2.0,2.0,2.0));
+        let c = p.pattern_at_shape(&o.this_is(), point(2.0,3.0,4.0));
+        assert_eq!(Color::new(1.0,1.5,2.0),c);//clamped in real
+
+        let mut o = Sphere::new();
+        o.set_transform(&scale(2.0,2.0,2.0));
+        let mut p = TestPattern::new();
+        p.set_transform(translation(0.5,1.0,1.5));
+        let c = p.pattern_at_shape(&o.this_is(), point(2.5,3.0,3.5));
+        assert_eq!(Color::new(0.75,0.5,0.25),c);
+
+    }
+
+    #[test]
+    pub fn pattern_features_135(){
+        let p = GradientPattern::base();
+        let c = p.pattern_at(point(0.0,0.0,0.0));
+        assert_eq!(Color::white(),c);
+
+        let p = GradientPattern::base();
+        let c = p.pattern_at(point(0.25,0.0,0.0));
+        assert_eq!(Color::new(0.75,0.75,0.75),c);
+
+        let p = GradientPattern::base();
+        let c = p.pattern_at(point(0.5,0.0,0.0));
+        assert_eq!(Color::new(0.5,0.5,0.5),c);
+
+        let p = GradientPattern::base();
+        let c = p.pattern_at(point(0.75,0.0,0.0));
+        assert_eq!(Color::new(0.25,0.25,0.25),c);
+    }
+
+    #[test]
+    pub fn pattern_features_136(){
+        let p = RingPattern::base();
+        let c = p.pattern_at(point(0.0,0.0,0.0));
+        assert_eq!(Color::white(),c);
+
+        let c = p.pattern_at(point(1.0,0.0,0.0));
+        assert_eq!(Color::black(),c);
+
+
+        let c = p.pattern_at(point(0.0,0.0,1.0));
+        assert_eq!(Color::black(),c);
+
+        let c = p.pattern_at(point(0.708,0.0,0.708));
+        assert_eq!(Color::black(),c);
+    }
+
+    #[test]
+    pub fn pattern_features_137(){
+        let p = CheckersPattern::base();
+        let c = p.pattern_at(point(0.0,0.0,0.0));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(0.99,0.0,0.0));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(1.01,0.0,0.0));
+        assert_eq!(Color::black(),c);
+
+        let c = p.pattern_at(point(0.0,0.0,0.0));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(0.0,0.99,0.0));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(0.0,1.01,0.0));
+        assert_eq!(Color::black(),c);
+
+        
+        let c = p.pattern_at(point(0.0,0.0,0.0));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(0.0,0.0,0.99));
+        assert_eq!(Color::white(),c);
+        let c = p.pattern_at(point(0.0,0.0,1.01));
+        assert_eq!(Color::black(),c);
+    }
+
+
+
+
 }
 
 
