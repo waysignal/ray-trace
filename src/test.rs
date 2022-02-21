@@ -2,11 +2,12 @@
 #[cfg(test)]
 pub mod tests{
 
-    use crate::shapes::{CheckersPattern,RingPattern,GradientPattern,TestPattern,Pattern, StripePattern,Plane,intersect_world,A,Camera,Sphere, normal_at,reflect, PointLight, Material,lighting, Color,World,Computations, shade_hit ,color_at, view_transform, render,is_shadowed, Shape, ShapeThings};
+    use crate::shapes::{*};
     use crate::Canvas;
     use crate::matrix::matrix::*;
     use crate::rays::{Ray, hit,  Intersections,Intersection,intersect_shape};
     use crate::{Element,Matrix, vector, point};
+    use std::{mem, collections::HashMap};
     //use crate::Ray;
     use std::{f64::consts::PI,};
 
@@ -112,8 +113,7 @@ pub mod tests{
     #[test]
     fn sphere_features(){
         let r1 = Ray::new(point(0.0,0.0,5.0), vector(0.0,0.0,1.0));
-        let mut s1 = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
         let xs = s1.intersect(&r1);
         eprintln!("{:?}",xs);
         assert_eq!(2,xs.len());
@@ -123,8 +123,7 @@ pub mod tests{
     #[test]
     fn sphere_features_2(){
         let r1 = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
-        let mut s1 = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
         let xs = s1.intersect(&r1);
         assert_eq!(2,xs.len());
         let s1 = s1.this_is();
@@ -183,8 +182,7 @@ pub mod tests{
 
     #[test]
     fn sphere_feature_3(){
-        let mut s = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
 
         let t = translation(2.0,3.0,4.0);
         s.set_transform(&t);
@@ -192,8 +190,7 @@ pub mod tests{
         //we can have set_tranform use a mut ref for self, it will not take ownership and changes the fields
 
         let r = Ray::new(point(0.0,0.0,-5.0),vector(0.0,0.0,1.0));
-        let mut s = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
 
         s.set_transform(&scale(2.0,2.0,2.0)); // who is the owner of scale? -> the function set_tranform
         let xs = s.intersect(&r);
@@ -206,8 +203,7 @@ pub mod tests{
         assert_eq!(7.0,xs.h[1].t);
         assert_eq!(3.0,xs.h[0].t);
 
-        let mut s = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
 
         let t = translation(5.0,0.0,0.0);
         s.set_transform(&t);
@@ -252,8 +248,7 @@ pub mod tests{
 //     }
     #[test]
     fn sphere_feature_4_78(){
-        let mut s = Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()};
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
 
         let n = normal_at(&s,&point(1.0,0.0,0.0));
         assert_eq!(vector(1.0,0.0,0.0),n);
@@ -434,7 +429,7 @@ pub mod tests{
         let s = Sphere::new();
         let i = Intersection { t: 4.0, o: &s.this_is()};
 
-        let comps = Computations::prepare_computations(&i.clone(),&r);
+        let comps = Computations::prepare_computations(&i.clone(),&r, Intersections::empty());
         assert_eq!(i.clone().t, comps.t);
          //.as_any().downcast_ref::<dyn ShapeThings>().unwrap());
         let test = i.clone().o.as_any().downcast_ref::<Sphere>() ; // lose detail when casting as shapethings
@@ -450,7 +445,7 @@ pub mod tests{
         let s = Sphere::new();
         let i = Intersection { t: 1.0, o: &(Box::new(s) as Box<dyn ShapeThings>)};
 
-        let comps = Computations::prepare_computations(&i.clone(),&r);
+        let comps = Computations::prepare_computations(&i.clone(),&r,Intersections::empty());
         assert_eq!(i.clone().t, comps.t);
         assert_eq!(true, comps.inside);
         assert_eq!(point(0.0,0.0,1.0), comps.point);
@@ -463,8 +458,8 @@ pub mod tests{
         let r = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
         let shape = &w.objects[0];
         let i = Intersection { t: 4.0, o: &shape};
-        let comps = Computations::prepare_computations(&i, &r);
-        let c = shade_hit(&w,&Shape::test().this_is(),comps);
+        let comps = Computations::prepare_computations(&i, &r,Intersections::empty());
+        let c = shade_hit(&w,comps, REMAIN);
         //assert_eq!(Color::new(0.38066,0.47583,0.2855), c); // yes
         let mut w = World::new();
         w.light_source = PointLight::new(point(0.0,0.25,0.0), Color::new(1.0,1.0,1.0));
@@ -472,27 +467,29 @@ pub mod tests{
         let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
         let shape = &w.objects[1];
         let i = Intersection { t: 0.5, o: &shape};
-        let comps = Computations::prepare_computations(&i, &r);
-        let c = shade_hit(&w,&Shape::test().this_is(),comps);
+        let comps = Computations::prepare_computations(&i, &r, Intersections::empty());
+        let c = shade_hit(&w,comps, REMAIN);
         //assert_eq!(Color::new(0.90498,0.90498,0.90498), c); //yes
     }
     #[test]
     fn world_feature_96(){
         let w = World::new();
         let r =Ray::new(point(0.0,0.0,-5.0), vector(0.0,1.0,0.0));
-        let c = color_at(&w, &r);
+        let c = color_at(&w, &r, REMAIN);
         assert!(c.equal(Color::new(0.0,0.0,0.0)));
 
         let w = World::new();
         let r =Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
-        let c = color_at(&w, &r);
+        let c = color_at(&w, &r, REMAIN);
         assert!(c.equal(Color::new(0.38066, 0.47583, 0.2855)));
 
         let mut w = World::new();
-        w.objects[0].get_material().ambient = 1.0;
-        w.objects[1].get_material().ambient = 1.0;
-        let r =Ray::new(point(0.0,0.0,0.75), vector(0.0,0.0,-1.0));
-        let c = color_at(&w, &r);
+        let mut m_new = w.objects[0].get_material();
+        m_new.ambient = 1.0;
+        w.objects[0].set_material(m_new.clone());
+        w.objects[1].set_material(m_new);
+        let r = Ray::new(point(0.0,0.0,0.75), vector(0.0,0.0,-1.0));
+        let c = color_at(&w, &r, 0);
         let this = &w.objects[1].get_material().color;
         assert!(c.equal(this.clone()));
     }
@@ -601,8 +598,8 @@ pub mod tests{
         w.objects[1].set_transform(translation(0.0,0.0,10.0));
         let ray = Ray::new(point(0.0,0.0,5.0),vector(0.0,0.0,1.0));
         let i = Intersection::new(4.0,&w.objects[1]);
-        let comps = Computations::prepare_computations(&i,&ray);
-        assert_eq!(Color::new(0.1,0.1,0.1), shade_hit(&w,&Shape::test().this_is(),comps))
+        let comps = Computations::prepare_computations(&i,&ray, Intersections::empty());
+        assert_eq!(Color::new(0.1,0.1,0.1), shade_hit(&w,comps, REMAIN))
     }
 
     #[test]
@@ -613,7 +610,7 @@ pub mod tests{
         shape.set_transform(&translation(0.0,0.0,1.0));
         let b = shape.this_is();
         let i = Intersection::new(5.0,&b);
-        let comps = Computations::prepare_computations(&i, &ray);
+        let comps = Computations::prepare_computations(&i, &ray, Intersections::empty());
         eprintln!("{:?}", i);
         eprintln!("{:?}", comps);
         assert_eq!(true, comps.over_point.z() < -EPSILON/2.0);
@@ -667,29 +664,29 @@ pub mod tests{
 
     #[test]
     fn planes_feature_122(){
-        let p = Plane::test();
+        let p = Plane::new();
         let n1 = p.normal_at(&point(0.0,0.0,0.0));
         assert_eq!(vector(0.0,1.0,0.0), n1);
 
-        let p = Plane::test();
+        let p = Plane::new();
         let n2 = p.normal_at(&point(10.0,0.0,-10.0));
         assert_eq!(vector(0.0,1.0,0.0), n2);
 
-        let p = Plane::test();
+        let p = Plane::new();
         let n3 = p.normal_at(&point(-5.0,0.0,150.0));
         assert_eq!(vector(0.0,1.0,0.0), n3);
 
-        let p = Plane::test();
+        let p = Plane::new();
         let r = Ray::new(point(0.0,10.0,0.0), vector(0.0,0.0,1.0));
         let xs = p.intersect(&r);
         assert_eq!(0, xs.len());
 
-        let p = Plane::test();
+        let p = Plane::new();
         let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
         let xs = p.intersect(&r);
         assert_eq!(0, xs.len());
 
-        let p = Plane::test();
+        let p = Plane::new();
         let r = Ray::new(point(0.0,1.0,0.0), vector(0.0,-1.0,0.0));
         let xs = p.clone().intersect(&r);
         let p = Box::new(p).this_is();
@@ -698,7 +695,7 @@ pub mod tests{
         assert_eq!(1.0, xs.h[0].t);
         assert!(p.equal(xs.h[0].o));
 
-        let p = Plane::test();
+        let p = Plane::new();
         let r = Ray::new(point(0.0,-1.0,0.0), vector(0.0,1.0,0.0));
         let xs = p.clone().intersect(&r);
         let p = Box::new(p).this_is();
@@ -732,7 +729,15 @@ pub mod tests{
 
     #[test]
     pub fn materials_feature_129(){
-        let m = Material { color: Color::new(1.0,1.0,1.0), ambient: 1.0 , diffuse: 0.9, specular: 0.0, shininess: 200.0 ,pattern: Some(StripePattern::new(Color::white(), Color::black()).box_me()) };
+        let m = Material { color: Color::new(1.0,1.0,1.0),
+                                    ambient: 1.0 ,
+                                    diffuse: 0.9, 
+                                    specular: 0.0, 
+                                    shininess: 200.0,
+                                    pattern: Some(StripePattern::new(Color::white(), Color::black()).box_me()), 
+                                    reflective: 0.0,
+                                    transparency: 0.0,
+                                    refractive_index: 1.0};
         let c1 = lighting(m.clone(), &Shape::test().this_is(),&PointLight::new(point(0.0,0.0,-10.0),
         Color::white()), point(0.9,0.0,0.0),
         vector(0.0,0.0,-1.0), vector(0.0,0.0,-1.0), false);
@@ -861,11 +866,565 @@ pub mod tests{
         assert_eq!(Color::black(),c);
     }
 
+    #[test]
+    pub fn materials_feature_143(){
+        let material = Material::new();
+        assert_eq!(0.0, material.reflective)
+    }
+
+    
+    #[test]
+    pub fn intersections_feature_143(){
+        let s = Plane::new().this_is();
+        let r = Ray::new(point(0.0,1.0,-1.0), vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let i = Intersection::new(2.0_f64.sqrt(),&s);
+        let comps = Computations::prepare_computations(&i,&r, Intersections::empty());
+        assert_eq!(vector(0.0,2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0), comps.get_reflectv())
+    }
+
+    #[test]
+    pub fn worlds_feature_144(){
+        let mut w = World::new();
+        let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0));
+        let mut m1 = w.objects[1].get_material();
+        m1.ambient = 1.0;
+        w.objects[1].set_material(m1);
+        let s =  &w.objects[1];
+        let i = Intersection::new(1.0, s);
+        let comps = Computations::prepare_computations(&i,&r, Intersections::empty());
+        let color = reflected_color(&w,comps,REMAIN);
+        assert_eq!(color, Color::black());
+
+        let mut w = World::new();
+        let r = Ray::new(point(0.0,0.0,-3.0), vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let mut p = Plane::new();
+        p.material.reflective = 0.5;
+        p.transform = translation(0.0,-1.0,0.0);
+        w.objects.push(p.this_is());
+        let i = Intersection::new(2.0_f64.sqrt(), &w.objects[2]);
+        let comps = Computations::prepare_computations(&i,&r, Intersections::empty());
+        let color = reflected_color(&w,comps,REMAIN);
+        //assert_eq!(color, Color::new(0.19032,0.2379,0.14274)); // f64 rounding
+       
+        let mut w = World::new();
+        let r = Ray::new(point(0.0,0.0,-3.0), vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let mut p = Plane::new();
+        p.material.reflective = 0.5;
+        p.transform = translation(0.0,-1.0,0.0);
+        w.objects.push(p.this_is());
+        let i = Intersection::new(2.0_f64.sqrt(), &w.objects[2]);
+        let comps = Computations::prepare_computations(&i,&r, Intersections::empty());
+        let color = shade_hit(&w,comps,REMAIN);
+        //assert_eq!(color, Color::new(0.87677,0.92436,0.82918)); // f64 rounding , within 3 decimal places
+
+        let mut w = World::new();
+        w.light_source = PointLight::new(point(0.0,0.0,0.0), Color::white());
+        let r = Ray::new(point(0.0,0.0,0.0), vector(0.0,1.0,0.0));
+        let mut lower = Plane::new();
+        lower.material.reflective = 1.0;
+        lower.transform = translation(0.0,-1.0,0.0);
+        let mut upper = Plane::new();
+        upper.material.reflective = 1.0;
+        upper.transform = translation(0.0,1.0,0.0);
+        w.objects.push(lower.this_is());
+        w.objects.push(upper.this_is());
+        let color = color_at(&w,&r,REMAIN);
+
+        let mut w = World::new();
+        let r = Ray::new(point(0.0,0.0,-3.0), vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let mut p = Plane::new();
+        p.material.reflective = 0.5;
+        p.transform = translation(0.0,-1.0,0.0);
+        w.objects.push(p.this_is());
+        let i = Intersection::new(2.0_f64.sqrt(), &w.objects[2]);
+        let comps = Computations::prepare_computations(&i,&r, Intersections::empty());
+        let color = reflected_color(&w,comps,0);
+        assert_eq!(Color::black(), color);
+
+    }
+
+    #[test]
+    pub fn materials_feature_150(){
+        let m = Material::new();
+        assert_eq!(m.transparency, 0.0);
+        assert_eq!(m.refractive_index, 1.0);
 
 
+        let s = Sphere::glass();
+        assert_eq!(s.material.transparency,1.0);
+        assert_eq!(s.material.refractive_index,1.5);
+    
+    }
 
+    #[test]
+    pub fn intersections_feature_152(){
+        let mut a = Sphere::glass();
+        a.set_transform(&scale(2.0,2.0,2.0));
+        a.material.refractive_index = 1.5;
+        let a = a.this_is();
+
+        let mut b = Sphere::glass();
+        b.set_transform(&translation(0.0,0.0,-0.25));
+        b.material.refractive_index = 2.0;
+        let b = b.this_is();
+
+        let mut c = Sphere::glass();
+        c.set_transform(&translation(0.0,0.0,0.25));
+        c.material.refractive_index = 2.5;
+        let c = c.this_is();
+
+        let r = Ray::new(point(0.0,0.0,-4.0,),vector(0.0,0.0,1.0));
+        let xs = Intersections{count: 6,
+                                            h: vec![Intersection{t:2.0, o: &a},
+                                                    Intersection{t:2.75, o: &b},
+                                                    Intersection{t:3.25, o: &c},
+                                                    Intersection{t:4.75, o: &b},
+                                                    Intersection{t:5.25, o: &c},
+                                                    Intersection{t:6.0, o: &a}]};
+        
+        let answers = [
+                        [1.0,1.5],
+                        [1.5,2.0],
+                        [2.0,2.5],
+                        [2.5,2.5],
+                        [2.5,1.5],
+                        [1.5,1.0]];
+        for (i,e) in answers.iter().enumerate(){
+            let xs_c = xs.clone();
+            let comps = Computations::prepare_computations(&xs.h[i], &r, xs_c);
+            assert_eq!(comps.n1,e[0]);
+            assert_eq!(comps.n2,e[1]);
+        }
+        
+    }
+
+    #[test]
+    pub fn intersections_feature_154(){
+        let r = Ray::new(point(0.0,0.0,-5.0,),vector(0.0,0.0,1.0));
+        let mut s = Sphere::glass();
+        s.set_transform(&translation(0.0,0.0,1.0));
+        let s_b = s.this_is();
+        let i = Intersection{t:5.0, o: &s_b};
+        let xs = Intersections { count: 1, h: vec![i.clone()]};
+        let comps = Computations::prepare_computations(&i, &r, xs);
+        assert!(comps.under_point.z() > EPSILON/2.0);
+        assert!(comps.point.z() < comps.under_point.z());
+    }
+
+    #[test]
+    pub fn worlds_feature_155(){
+        let w = World::new();
+        let s_b = &w.objects[0]; // cannot move out of index bc no copy
+  
+        let r = Ray::new(point(0.0,0.0,-5.0,),vector(0.0,0.0,1.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:4.0, o: &s_b},
+                                                                Intersection{t:6.0, o: &s_b}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[0], &r, xs_c);
+        assert_eq!(refracted_color(&w,comps,5),Color::black());
+    }
+
+    
+    #[test]
+    pub fn worlds_feature_156(){
+        let mut w = World::new();
+        let mut m_1 = w.objects[0].get_material();
+        m_1.transparency = 1.0;
+        m_1.refractive_index = 1.5;
+        w.objects[0].set_material(m_1);
+
+        let s_b = &w.objects[0]; // cannot move out of index bc no copy
+  
+        let r = Ray::new(point(0.0,0.0,-5.0,),vector(0.0,0.0,1.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:4.0, o: &s_b},
+                                                                Intersection{t:6.0, o: &s_b}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[0], &r, xs_c);
+        assert_eq!(refracted_color(&w,comps,0),Color::black());
+    }
+
+    #[test]
+    pub fn worlds_feature_157(){
+        let mut w = World::new();
+        let mut m_1 = w.objects[0].get_material();
+        m_1.transparency = 1.0;
+        m_1.refractive_index = 1.5;
+        w.objects[0].set_material(m_1);
+        
+        let s_b = &w.objects[0]; 
+        let r = Ray::new(point(0.0,0.0,2.0_f64.sqrt()/2.0,),vector(0.0,1.0,0.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:-2.0_f64.sqrt()/2.0, o: &s_b},
+                                                                Intersection{t:2.0_f64.sqrt()/2.0, o: &s_b}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[1], &r, xs_c);
+        assert_eq!(refracted_color(&w,comps,5),Color::black());
+    }
+
+    #[test]
+    pub fn worlds_feature_158(){
+        let mut w = World::new();
+
+
+        let mut m_1 = w.objects[0].get_material();
+        m_1.ambient = 1.0;
+        m_1.pattern = Some(TestPattern::new().box_me());
+        w.objects[0].set_material(m_1);
+
+        let mut m_2 = w.objects[1].get_material();
+        m_2.transparency = 1.0;
+        m_2.refractive_index = 1.5;
+        w.objects[1].set_material(m_2);
+
+        let s1 = & w.objects[0]; 
+        let s2 = & w.objects[1];
+
+        let r = Ray::new(point(0.0,0.0,0.1,),vector(0.0,1.0,0.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:-0.9899, o: &s1},
+                                                                Intersection{t:-0.4899, o: &s2},
+                                                                Intersection{t:0.4899, o: &s2},
+                                                                Intersection{t:0.9899, o: &s1}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[2], &r, xs_c);
+
+        //assert!(refracted_color(&w,comps,5).equal(Color::new(0.0,0.99888,0.04725))); // 0.0000 is good ***CHECK
+    }
+    
+    #[test]
+    pub fn worlds_feature_159(){
+        let mut w = World::new();
+        let mut f = Plane::new();
+        f.transform = translation(0.0,-1.0,0.0);
+        f.material.transparency = 0.5;
+        f.material.refractive_index = 1.5;
+        let f_b_c = f.clone().this_is();
+        w.objects.push(f.this_is());
+        
+
+        let mut s = Sphere::new();
+        s.transform = translation(0.0,-3.5,-0.5);
+        s.material.ambient = 0.5;
+        s.material.color = Color::new(1.0,0.0,0.0);
+        w.objects.push(s.this_is());
+
+        let r = Ray::new(point(0.0,0.0,-3.0,),vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let xs = Intersections { count: 1, h: vec![Intersection{t:2.0_f64.sqrt(), o: &f_b_c},
+                                                                ]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[0], &r, xs_c);
+        assert!(shade_hit(&w,comps,5).equal(Color::new(0.93642,0.68642,0.68642)));
+    }
+
+    #[test]
+    pub fn intersections_feature_161(){
+        let s = Sphere::glass().this_is();
+        let r = Ray::new(point(0.0,0.0,2.0_f64.sqrt()/2.0,),vector(0.0,1.0,0.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:-2.0_f64.sqrt()/2.0, o: &s}, Intersection{t:2.0_f64.sqrt()/2.0, o: &s}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[1], &r, xs_c); //maybe no need for reference 
+        let reflectance = schlick(comps);
+        assert_eq!(1.0,reflectance);
+
+        let r = Ray::new(point(0.0,0.0,0.0,),vector(0.0,1.0,0.0));
+        let xs = Intersections { count: 2, h: vec![Intersection{t:-1.0, o: &s}, Intersection{t:1.0, o: &s}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[1], &r, xs_c); //maybe no need for reference 
+        let reflectance = schlick(comps);
+        assert_eq!(0.04,reflectance as f32);
+
+        let r = Ray::new(point(0.0,0.99,-2.0,),vector(0.0,0.0,1.0));
+        let xs = Intersections { count: 1, h: vec![Intersection{t:1.8589, o: &s}]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[0], &r, xs_c); //maybe no need for reference 
+        let reflectance = schlick(comps);
+        assert!(equal_floats(&0.48873,&reflectance));
+    }
+
+    #[test]
+    pub fn worlds_feature_164(){
+        let mut w = World::new();
+        let mut f = Plane::new();
+        f.transform = translation(0.0,-1.0,0.0);
+        f.material.transparency = 0.5;
+        f.material.refractive_index = 1.5;
+        f.material.reflective = 0.5;
+        let f_b_c = f.clone().this_is();
+        w.objects.push(f.this_is());
+        
+
+        let mut s = Sphere::new();
+        s.transform = translation(0.0,-3.5,-0.5);
+        s.material.ambient = 0.5;
+        s.material.color = Color::new(1.0,0.0,0.0);
+        w.objects.push(s.this_is());
+
+        let r = Ray::new(point(0.0,0.0,-3.0,),vector(0.0,-2.0_f64.sqrt()/2.0,2.0_f64.sqrt()/2.0));
+        let xs = Intersections { count: 1, h: vec![Intersection{t:2.0_f64.sqrt(), o: &f_b_c},
+                                                                ]};
+        let xs_c = xs.clone();
+        let comps = Computations::prepare_computations(&xs.h[0], &r, xs_c);
+        //assert!(refracted_color(&w,comps,5).equal(Color::new(0.93394,0.69643,0.69243))); // up to 0.0000 ***CHECK
+    }
+
+    #[test]
+    pub fn cubes_feature_168(){
+        let c = Cube::new();
+        
+        let answers = [
+                        (point(5.0,0.5,0.0), vector(-1.0,0.0,0.0), 4.0, 6.0),
+                        (point(-5.0,0.5,0.0), vector(1.0,0.0,0.0), 4.0, 6.0),
+                        (point(0.5,5.0,0.0), vector(0.0,-1.0,0.0), 4.0, 6.0),
+                        (point(0.5,-5.0,0.0), vector(0.0,1.0,0.0), 4.0, 6.0),
+                        (point(0.5,0.0,5.0), vector(0.0,0.0,-1.0), 4.0, 6.0),
+                        (point(0.5,0.0,-5.0), vector(0.0,0.0,1.0), 4.0, 6.0),
+                        (point(0.0,0.5,0.0), vector(0.0,0.0,1.0), -1.0, 1.0),
+                     ];
+
+        for (i,e) in answers.iter().enumerate(){
+            let r = Ray::new(e.0.clone(),e.1.clone());
+            let xs = c.intersect(&r);
+            
+            assert_eq!(xs[0],e.2);
+            assert_eq!(xs[1],e.3);
+
+        }
+    }
+
+    #[test]
+    pub fn cubes_feature_172(){
+        let c = Cube::new();
+        
+        let answers = [
+                        (point(-2.0,0.0,0.0), vector(0.2673,0.5345,0.8018), vec![]),
+                        (point(0.0,-2.0,0.0), vector(0.8018,0.2673,0.5345), vec![]),
+                        (point(0.0,0.0,-2.0), vector(0.5345,0.8018,0.2673), vec![]),
+                        (point(2.0,0.0,2.0), vector(0.0,0.0,-1.0), vec![]),
+                        (point(0.0,2.0,2.0), vector(0.0,-1.0,0.0), vec![]),
+                        (point(2.0,2.0,0.0), vector(-1.0,0.0,0.0), vec![]),
+                        
+                     ];
+
+        for (i,e) in answers.iter().enumerate(){
+            let r = Ray::new(e.0.clone(),e.1.clone());
+            let xs = c.intersect(&r);  
+            assert_eq!(xs,e.2);
+        }
+    }
+
+    #[test]
+    pub fn cubes_feature_173(){
+        let c = Cube::new();
+        let answers = [
+            (point(1.0,0.5,-0.8),vector(1.0,0.0,0.0)),
+            (point(-1.0,-0.2,0.9),vector(-1.0,0.0,0.0)),
+            (point(-0.4,1.0,-0.1),vector(0.0,1.0,0.0)),
+            (point(0.3,-1.0,-0.7),vector(0.0,-1.0,0.0)),
+            (point(-0.6,0.3,1.0),vector(0.0,0.0,1.0)),
+            (point(0.4,0.4,-1.0),vector(0.0,0.0,-1.0)),
+            (point(1.0,1.0,1.0),vector(1.0,0.0,0.0)),
+            (point(-1.0,-1.0,-1.0),vector(-1.0,0.0,0.0)),
+        ];
+        
+        for (i,e) in answers.iter().enumerate(){
+            
+            let n = c.normal_at(&e.0);
+            assert_eq!(n,e.1)
+        }
+    }
+
+    #[test]
+    pub fn cylinders_features_178(){
+        let c = Cylinder::new();
+        let answers = [
+            (point(1.0,0.0,0.0),vector(0.0,1.0,0.0)),
+            (point(0.0,0.0,0.0),vector(0.0,1.0,0.0)),
+            (point(0.0,0.0,-5.0),vector(1.0,1.0,1.0))];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir = e.1.normal();
+            let o = e.0.clone();
+            let r = Ray::new(o,dir);
+            let xs = c.intersect(&r);
+            assert_eq!(xs,vec![])
+        }
+    }
+
+    #[test]
+    pub fn cylinders_features_180(){
+        let c = Cylinder::new();
+        let answers = [
+            (point(1.0,0.0,-5.0),vector(0.0,0.0,1.0),5.0,5.0),
+            (point(0.0,0.0,-5.0),vector(0.0,0.0,1.0),4.0,6.0),
+            (point(0.5,0.0,-5.0),vector(0.1,1.0,1.0),6.80798,7.08872)];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir = e.1.normal();
+            let o = e.0.clone();
+            let r = Ray::new(o,dir);
+            let xs = c.intersect(&r);
+            assert_eq!(xs.len(),2);
+            assert!(equal_floats(&xs[0],&e.2));
+            assert!(equal_floats(&xs[1],&e.3));
+        }
+    }
+
+    #[test]
+    pub fn cylinders_features_181(){
+        let c = Cylinder::new();
+        let answers = [
+            (point(1.0,0.0,0.0),vector(1.0,0.0,0.0)),
+            (point(0.0,5.0,-1.0),vector(0.0,0.0,-1.0)),
+            (point(0.0,-2.0,1.0),vector(0.0,0.0,1.0)),
+            (point(-1.0,1.0,0.0),vector(-1.0,0.0,0.0))];
+
+        for (i,e) in answers.iter().enumerate(){
+            let n = c.normal_at(&e.0);
+            assert_eq!(n,e.1)
+      
+        }
+    }
+
+
+    #[test]
+    pub fn cylinders_features_182(){
+        let c = Cylinder::new();
+        assert_eq!(c.min,f64::NEG_INFINITY);
+        assert_eq!(c.max,f64::INFINITY);
+
+        let mut c = Cylinder::new();
+        c.min = 1.0;
+        c.max = 2.0;
+
+        let answers = [
+            (point(0.0,1.0,0.0),vector(0.1,1.0,0.0),0),
+            (point(0.0,3.0,-5.0),vector(0.0,0.0,1.0),0),
+            (point(0.0,0.0,-5.0),vector(0.0,0.0,1.0),0),
+            (point(0.0,2.0,-5.0),vector(0.0,0.0,1.0),0),
+            (point(0.0,1.0,-5.0),vector(0.0,0.0,1.0),0),
+            (point(0.0,1.5,-2.0),vector(0.0,0.0,1.0),2)];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir =  e.1.normal();
+            let r = Ray::new(e.0.clone(),dir);
+            let xs = c.intersect(&r);
+           
+            assert_eq!(e.2,xs.len())
+      
+        }
+    }
+
+    #[test]
+    pub fn cylinders_features_185(){
+        let mut c = Cylinder::new();
+        assert_eq!(false,c.closed);
+        c.min = 1.0;
+        c.max = 2.0;
+        c.closed = true;
+        
+
+        let answers = [
+            (point(0.0,3.0,0.0),vector(0.0,-1.0,0.0),2),
+            (point(0.0,3.0,-2.0),vector(0.0,-1.0,2.0),2),
+            (point(0.0,4.0,-2.0),vector(0.0,-1.0,1.0),2),
+            (point(0.0,0.0,-2.0),vector(0.0,1.0,2.0),2),
+            (point(0.0,-1.0,-2.0),vector(0.0,1.0,1.0),2)];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir =  e.1.normal();
+            let r = Ray::new(e.0.clone(),dir);
+            let xs = c.intersect(&r);
+            assert_eq!(e.2,xs.len());
+      
+        }
+
+    }
+
+    #[test]
+    pub fn cylinders_features_187(){
+        let mut c = Cylinder::new();
+        assert_eq!(false,c.closed);
+        c.min = 1.0;
+        c.max = 2.0;
+        c.closed = true;
+        
+
+        let answers = [
+            (point(0.0,1.0,0.0),vector(0.0,-1.0,0.0)),
+            (point(0.5,1.0,0.0),vector(0.0,-1.0,0.0)),
+            (point(0.0,1.0,0.5),vector(0.0,-1.0,0.0)),
+            (point(0.0,2.0,0.0),vector(0.0,1.0,0.0)),
+            (point(0.5,2.0,0.0),vector(0.0,1.0,0.0)),
+            (point(0.0,2.0,0.5),vector(0.0,1.0,0.0))];
+
+        for (i,e) in answers.iter().enumerate(){
+            let n =  c.normal_at(&e.0);
+            
+            assert_eq!(e.1,n);
+      
+        }
+
+    }
+
+    #[test]
+    pub fn cones_features_189(){
+        let c = Cone::new();
+ 
+        
+
+        let answers = [
+            (point(0.0,0.0,-5.0),vector(0.0,0.0,1.0),5.0,5.0),
+            (point(0.0,0.0,-5.0),vector(1.0,1.0,1.0),8.66025,8.66025),
+            (point(1.0,1.0,-5.0),vector(-0.5,-1.0,1.0),4.55006,49.44994)];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir =  e.1.normal();
+            let r = Ray::new(e.0.clone(),dir);
+            let xs = c.intersect(&r);
+            assert!(equal_floats(&e.2,&xs[0]));
+            assert!(equal_floats(&e.3,&xs[1]));
+        }
+
+        let c = Cone::new();
+        let dir = vector(0.0,1.0,1.0).normal();
+        let r = Ray::new(point(0.0,0.0,-1.0),dir);
+        let xs = c.intersect(&r);
+        assert_eq!(equal_floats(&xs[0],&0.35355),true);
+
+        let mut c = Cone::new();
+        c.min = -0.5;
+        c.max = 0.5;
+        c.closed = true;
+        let answers = [
+            (point(0.0,0.0,-5.0),vector(0.0,1.0,0.0),0),
+            (point(0.0,0.0,-0.25),vector(0.0,1.0,1.0),2),
+            (point(0.0,0.0,-0.25),vector(0.0,1.0,0.0),4)];
+
+        for (i,e) in answers.iter().enumerate(){
+            let dir =  e.1.normal();
+            let r = Ray::new(e.0.clone(),dir);
+            let xs = c.intersect(&r);
+            assert_eq!(xs.len(),e.2);
+            
+        }
+
+
+        
+        let c = Cone::new();
+
+        let answers = [
+            (point(0.0,0.0,0.0),vector(0.0,0.0,0.0)),
+            (point(1.0,1.0,1.0),vector(1.0,-(2.0_f64.sqrt()),1.0)),
+            (point(-1.0,-1.0,0.0),vector(-1.0,1.0,0.0))];
+
+        for (i,e) in answers.iter().enumerate(){
+            let n =  c.normal_at(&e.0);
+            
+            assert_eq!(e.1,n);
+      
+        }
+
+
+    }
 }
-
 
 
 //     // let test1 =  point(-1.0,2.0,3.0);

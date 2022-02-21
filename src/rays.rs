@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 
 
-use crate::{Element,Matrix};
+use crate::{Element,Matrix,point};
 use crate::shapes::{Sphere,ShapeThings, A};
 
 
@@ -39,7 +39,7 @@ pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
             continue;   
         }
     } 
-    this_one
+    this_one 
 
 }
 //function gets destroyed, using a cloned value, it gets destroyed. removed clone for t_h and insert mut for input to fix
@@ -152,7 +152,7 @@ impl<'a> Intersection<'a> {
 }
 #[derive( Debug,Clone)]
 pub struct Intersections<'a>{
-    pub count: u32,
+    pub count: u8,
     pub h: Vec<Intersection<'a>>,
 
 }
@@ -160,7 +160,7 @@ pub struct Intersections<'a>{
 impl<'a> Intersections<'a>{
     pub fn new(i: Vec<Intersection>) -> Intersections{
         Intersections {
-            count: i.len() as u32,
+            count: i.len() as u8,
             h: i
 
         }
@@ -194,8 +194,9 @@ impl Ray{
     pub fn sphere_to_ray(&self, s: &Sphere) -> Element{
         let temp_r = self.clone();
         let temp_s = s.clone();
-        temp_r.origin - temp_s.loc
+        temp_r.origin - point(0.0,0.0,0.0)
         
+
 
     }
 

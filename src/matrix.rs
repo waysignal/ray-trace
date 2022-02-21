@@ -27,6 +27,7 @@
 
 pub mod matrix{
     use std::ops::{Neg,Div};
+    use crate::shapes::{equal_floats};
     static EPSILON: f64 = 0.00001;
 
 
@@ -40,13 +41,6 @@ pub mod matrix{
         //changed this from u64 to usize to save
     }
 
-    pub fn equal_floats(a:&f64,b:&f64) -> bool {
-        if (a.abs()-b.abs()) < EPSILON{
-            true   
-        } else {
-            false
-        }
-    }
 
 
     pub fn translation(x:f64,y:f64,z:f64) -> Matrix {

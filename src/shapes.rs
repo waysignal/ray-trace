@@ -1,11 +1,20 @@
 use crate::canvas::Canvas;
-use crate::{Element,Matrix,point,vector,scale, equal_floats,translation};
+use crate::{Element,Matrix,point,vector,scale, translation};
 use crate::rays::{Ray, Intersections,Intersection,hit, intersect_shape};
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
 use std::any::Any;
 
-static EPSILON: f64 = 0.00001;
+pub static EPSILON: f64 = 0.00001;
+pub static REMAIN: u8 = 4;
 
+
+pub fn equal_floats(a:&f64,b:&f64) -> bool {
+    if (a.abs()-b.abs()).abs() < EPSILON{
+        true   
+    } else {
+        false
+    }
+}
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct CheckersPattern{
@@ -28,7 +37,7 @@ impl Pattern for CheckersPattern{
             self.transform = t_c;
         }
         fn pattern_at(&self,p: Element) -> Color {
-            if (p.x().floor() + p.y().floor() + p.z().floor())%2.0 == 0.0 {
+            if (p.x().floor() + p.y().floor() + p.z().floor())%2.0 == 0.0  {
                 self.get_a()
             } else{
                 self.get_b()
@@ -134,7 +143,7 @@ impl Pattern for GradientPattern{
         }
         fn pattern_at(&self,p: Element) -> Color {
             let distance = self.get_b() - self.get_a();
-            eprintln!("{:?}",distance);
+
             let fraction = p.x() - p.x().floor();
 
             self.get_a() + (distance * fraction)
@@ -302,7 +311,7 @@ impl A for Box<dyn ShapeThings>{
             let here = Intersection{ t: *e , o: self};
             list.push(here);
         }
-        Intersections { count: h.len() as u32, h: list }
+        Intersections { count: h.len() as u8, h: list }
     }
     fn equal(&self, other: & Box<dyn ShapeThings>) -> bool{
         self.get_material() == other.get_material() && self.get_transform() == other.get_transform()
@@ -321,8 +330,11 @@ pub trait ShapeThings: CloneFoo + Any + std::fmt::Debug { //we cannot use partia
     fn normal_at(&self, pos: &Element) -> Element;
     fn get_material(&self) -> Material;
     fn set_transform(&mut self,t: Matrix);
+    fn set_material(&mut self, m: Material);
+    fn get_kind(&self) -> Shapes;
     
     fn this_is(self) -> Box<dyn ShapeThings>;
+
 
 }
 
@@ -342,6 +354,12 @@ impl<T> CloneFoo for T
 impl Clone for Box<dyn ShapeThings> {
     fn clone(&self) -> Box<dyn ShapeThings> {
         self.clone_box()
+    }
+}
+impl PartialEq for Box<dyn ShapeThings> {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_transform() == other.get_transform() && self.get_material() == other.get_material() && self.get_kind() == other.get_kind()
+       
     }
 }
 /*not my workaround
@@ -369,17 +387,33 @@ impl Clone for Box<dyn Pattern> {
         self.clone_box()
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shapes{
+    Shape,
+    Sphere,
+    Plane,
+    Cube,
+    Cylinder,
+    Cone,
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shape {
     pub transform: Matrix,
     pub material: Material,
+    pub kind: Shapes,
     
 }
 
 impl Shape {
+
+    pub fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
     pub fn set_transform(&mut self,t: Matrix){ //switching to not a reference for Matrix bc design choice: each one should be unique
-        let t_c = t.clone();
-        self.transform = t_c;
+    
+        self.transform = t;
 
     }
 
@@ -387,13 +421,14 @@ impl Shape {
         Shape{
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(),
+            kind: Shapes::Shape,
             
         }
     }
 }
 
 impl ShapeThings for Shape{
-    
+    fn get_kind(&self) -> Shapes { Shapes::Shape}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
 
         eprintln!("{:?}", r);
@@ -411,9 +446,13 @@ impl ShapeThings for Shape{
         let m_c = self.clone();
         m_c.material
     }
-    fn set_transform(&mut self,t: Matrix){
-        let t_c = t.clone();
-        self.transform = t_c;
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
 
     }
 
@@ -431,13 +470,15 @@ impl ShapeThings for Shape{
 pub struct Plane{
     pub transform: Matrix,
     pub material: Material,
+    pub kind: Shapes,
 }
 
 impl Plane {
-    pub fn test() -> Plane{
+    pub fn new() -> Plane{
         Plane{
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(),
+            kind: Shapes::Plane,
             
         }
     }
@@ -445,7 +486,16 @@ impl Plane {
 
 
 impl ShapeThings for Plane{
+    fn get_kind(&self) -> Shapes { Shapes::Plane}
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
 
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
+
+    }
     
     fn intersect(&self,r: &Ray) -> Vec<f64>{
         
@@ -474,23 +524,370 @@ impl ShapeThings for Plane{
         let m_c = self.clone();
         m_c.material
     }
-    fn set_transform(&mut self,t: Matrix){
-        let t_c = t.clone();
-        self.transform = t_c;
 
+}
+
+pub fn check_axis(origin: f64, direction: f64) -> [f64;2] {
+    let tmin_numerator = -1.0 - origin;
+    let tmax_numerator = 1.0 - origin;
+    let mut tmin = 0.0;
+    let mut tmax = 0.0;
+    if (direction.abs()) >= EPSILON{
+        tmin = tmin_numerator / direction;
+        tmax = tmax_numerator / direction;
+    } else {
+        tmin = tmin_numerator * f64::INFINITY;
+        tmax = tmax_numerator * f64::INFINITY;
     }
+
+    if tmin > tmax { std::mem::swap(&mut tmin, &mut tmax)}
+
+    [tmin,tmax]
 }
 #[derive(Debug, Clone,PartialEq)]
-pub struct Sphere{
-    pub loc: Element,
+pub struct Cube{
     pub transform: Matrix,
     pub material: Material,
+    pub kind: Shapes,
+}
+
+impl Cube {
+    pub fn new() -> Cube{
+        Cube{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(),
+            kind: Shapes::Cube,
+            
+        }
+    }
+}
+
+
+impl ShapeThings for Cube{
+    fn get_kind(&self) -> Shapes { Shapes::Cube}
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
+
+    }
+    
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
+        let [xtmin,xtmax] = check_axis(r.origin.x(), r.direction.x());
+        let [ytmin,ytmax] = check_axis(r.origin.y(), r.direction.y());
+        let [ztmin,ztmax] = check_axis(r.origin.z(), r.direction.z());
+        //finding largest min, and smallest max
+        let tmin = *[xtmin,ytmin,ztmin].iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+        //let tmin = [xtmin,ytmin,ztmin].iter().fold(0.0_f64, |a, &b| a.max(b));
+        //let tmax = [xtmax,ytmax,ztmax].iter().fold(f64::INFINITY, |a, &b| a.min(b));
+        let tmax = *[xtmax,ytmax,ztmax].iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+        if tmin > tmax { return vec![] } 
+        vec![tmin,tmax]
+ 
+
+
+    }
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+    
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+    fn normal_at(&self, pos: &Element) -> Element{
+        let x = pos.x().abs();
+        let y = pos.y().abs();
+        let z = pos.z().abs();
+        let maxc = *[x,y,z].iter().max_by(|a,b| a.partial_cmp(b).unwrap()).unwrap();
+        // match maxc {
+        //     x if x == maxc => vector(pos.x(),0.0,0.0),
+        //     y if y == maxc => vector(0.0,pos.y(),0.0),
+        //     _ => vector(0.0,0.0,pos.z()),
+        // } ??? returns first match even when not true
+        if maxc == x { return vector(pos.x(),0.0,0.0)}
+        else if maxc == y { return vector(0.0,pos.y(),0.0)}
+        vector(0.0,0.0,pos.z())
+    }
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+
+}
+
+
+
+
+
+#[derive(Debug, Clone,PartialEq)]
+pub struct Cylinder{
+    pub transform: Matrix,
+    pub material: Material,
+    pub min: f64,
+    pub max: f64,
+    pub kind: Shapes,
+    pub closed: bool,
+}
+
+impl Cylinder {
+    pub fn new() -> Cylinder{
+        Cylinder{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(),
+            min: f64::NEG_INFINITY,
+            max: f64::INFINITY,
+            kind: Shapes::Cylinder,
+            closed: false,    
+        }
+    }
+
+    pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
+        if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
+            return
+        }
+
+        let t = (self.min - r.origin.y()) / r.direction.y();
+        if self.check_cap(r,t) { xs.push(t)}
+        let t = (self.max - r.origin.y()) / r.direction.y();
+        if self.check_cap(r,t) { xs.push(t)}
+
+
+    }
+
+    pub fn check_cap(&self, r: &Ray, t: f64) -> bool {
+        let x = r.origin.x() + t * r.direction.x();
+        let z = r.origin.z() + t * r.direction.z();
+        (x.powi(2) + z.powi(2)) <= 1.0
+    }
+}
+
+
+impl ShapeThings for Cylinder{
+    fn get_kind(&self) -> Shapes { Shapes::Cylinder}
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
+
+    }
+    
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
+        let mut xs:Vec<f64> = vec![];
+        let a = r.direction.x().powi(2) + r.direction.z().powi(2);
+
+        if equal_floats(&0.0_f64,&a) {         
+            self.intersect_cap(r,&mut xs);
+              
+        } else {
+
+            let b = 2.0 * r.origin.x() * r.direction.x() +
+                    2.0 * r.origin.z() * r.direction.z();
+            let c = r.origin.x().powi(2) + r.origin.z().powi(2) - 1.0;
+
+            let disc = b.powi(2) - 4.0 * a * c;
+            
+            if disc < 0.0 { return xs }
+            
+            let mut t0 = (-b - disc.sqrt())/(2.0*a);
+            let mut t1 = (-b + disc.sqrt())/(2.0*a);
+            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+            
+            let y0 = r.origin.y() + t0 * r.direction.y();
+            if self.min < y0 && y0 < self.max {
+                xs.push(t0);
+            }
+            let y1 = r.origin.y() + t1 * r.direction.y();
+            if self.min < y1 && y1 < self.max {
+                xs.push(t1);
+            }
+            self.intersect_cap(r,&mut xs);
+        }
+        xs
+
+    }
+
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+    
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+    fn normal_at(&self, pos: &Element) -> Element{
+        let dist = pos.x().powi(2) + pos.z().powi(2);
+        if dist < 1.0 && pos.y() >= self.max - EPSILON {
+            return vector (0.0,1.0,0.0)
+        } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
+            return vector(0.0,-1.0,0.0)
+        }
+        vector(pos.x(),0.0,pos.z())
+    }
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+
+}
+
+#[derive(Debug, Clone,PartialEq)]
+pub struct Cone{
+    pub transform: Matrix,
+    pub material: Material,
+    pub min: f64,
+    pub max: f64,
+    pub kind: Shapes,
+    pub closed: bool,
+}
+
+impl Cone {
+    pub fn new() -> Cone{
+        Cone{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(),
+            min: f64::NEG_INFINITY,
+            max: f64::INFINITY,
+            kind: Shapes::Cone,
+            closed: false,    
+        }
+    }
+
+    pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
+        if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
+            return
+        }
+
+        let t = (self.min - r.origin.y()) / r.direction.y();
+        if self.check_cap(r,t,self.min) { xs.push(t)}
+        let t = (self.max - r.origin.y()) / r.direction.y();
+        if self.check_cap(r,t,self.max) { xs.push(t)}
+
+
+    }
+    pub fn check_cap(&self, r: &Ray, t: f64, y: f64) -> bool {
+        let x = r.origin.x() + t * r.direction.x();
+        let z = r.origin.z() + t * r.direction.z();
+        (x.powi(2) + z.powi(2)) <= y.abs()
+    }
+}
+
+
+impl ShapeThings for Cone{
+    fn get_kind(&self) -> Shapes { Shapes::Cone}
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
+
+    }
+    
+    fn intersect(&self,r: &Ray) -> Vec<f64>{
+        let mut xs:Vec<f64> = vec![];
+        let a = r.direction.x().powi(2) - r.direction.y().powi(2) + r.direction.z().powi(2);
+        let b = 2.0 * r.origin.x() * r.direction.x() -
+        2.0 * r.origin.y() * r.direction.y() +
+        2.0 * r.origin.z() * r.direction.z();
+        let c = r.origin.x().powi(2) - r.origin.y().powi(2) + r.origin.z().powi(2);
+        
+        if equal_floats(&0.0_f64,&a) && equal_floats(&0.0_f64,&b) { 
+
+            self.intersect_cap(r,&mut xs);
+              
+        } else if equal_floats(&0.0_f64,&a) {
+            let t = -c/(2.0*b);
+            xs.push(t);
+            self.intersect_cap(r,&mut xs);
+
+        } else {
+            
+
+            let disc = b.powi(2) - 4.0 * a * c;
+            
+            if disc < 0.0 { return xs }
+            
+            let mut t0 = (-b - disc.sqrt())/(2.0*a);
+            let mut t1 = (-b + disc.sqrt())/(2.0*a);
+            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+            
+            let y0 = r.origin.y() + t0 * r.direction.y();
+            if self.min < y0 && y0 < self.max {
+                xs.push(t0);
+            }
+            let y1 = r.origin.y() + t1 * r.direction.y();
+            if self.min < y1 && y1 < self.max {
+                xs.push(t1);
+            }
+            self.intersect_cap(r,&mut xs);
+        }
+        xs
+
+    }
+
+    fn this_is(self) -> Box<dyn ShapeThings>
+    {
+        Box::new(self) as Box<dyn ShapeThings>
+    
+    }
+    
+    fn get_transform(&self) -> Matrix {
+        self.clone().transform
+    }
+    fn normal_at(&self, pos: &Element) -> Element{
+        let dist = pos.x().powi(2) + pos.z().powi(2);
+        if dist < 1.0 && pos.y() >= self.max - EPSILON {
+            return vector (0.0,1.0,0.0)
+        } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
+            return vector(0.0,-1.0,0.0)
+        }
+        let mut y = dist.sqrt();
+        if pos.y() > 0.0 { y = -y}
+        vector(pos.x(),y,pos.z())
+    }
+    fn get_material(&self) -> Material {
+        let m_c = self.clone();
+        m_c.material
+    }
+
+}
+
+
+
+
+
+
+#[derive(Debug, Clone,PartialEq)]
+pub struct Sphere{
+    pub transform: Matrix,
+    pub material: Material,
+    pub kind: Shapes,
 }
 
 impl Sphere{
+    
     pub fn new() -> Sphere{
-        Sphere{loc: point(0.0,0.0,0.0),
-            transform: Matrix::zero(4,4).identity(),material: Material::new()}
+        Sphere{
+            transform: Matrix::zero(4,4).identity(),
+            material: Material::new(), 
+            kind: Shapes::Sphere}
+    }
+
+    pub fn glass() -> Sphere{
+        let mut s = Sphere::new();
+        s.material.transparency = 1.0;
+        s.material.refractive_index = 1.5;
+        s
     }
     pub fn set_transform(&mut self,t: &Matrix){
         let t_c = t.clone();
@@ -504,6 +901,7 @@ impl Sphere{
 }
 
 impl ShapeThings for Sphere{
+    fn get_kind(&self) -> Shapes { Shapes::Sphere}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
          //why ref here too?, isnt obj already one?, accessing fields changes this?
         
@@ -551,9 +949,13 @@ impl ShapeThings for Sphere{
         let m_c = self.clone();
         m_c.material
     }
-    fn set_transform(&mut self,t: Matrix){
-        let t_c = t.clone();
-        self.transform = t_c;
+    fn set_material(&mut self, m: Material){
+        self.material = m;
+    }
+
+    fn set_transform(&mut self,t: Matrix){ 
+    
+        self.transform = t;
 
     }
     fn this_is(self) -> Box<dyn ShapeThings>
@@ -603,6 +1005,9 @@ pub struct Material{
     pub specular: f64,
     pub shininess: f64,
     pub pattern: Option<Box<dyn Pattern>>,
+    pub reflective: f64,
+    pub transparency: f64,
+    pub refractive_index: f64,
 }
 
 impl PartialEq for Box<dyn Pattern>  {
@@ -613,7 +1018,15 @@ impl PartialEq for Box<dyn Pattern>  {
 }
 impl Material{
     pub fn new() -> Material{
-        Material { color: Color::new(1.0,1.0,1.0), ambient: 0.1 , diffuse: 0.9, specular: 0.9, shininess: 200.0 ,pattern: None }
+        Material {  color: Color::new(1.0,1.0,1.0), 
+                    ambient: 0.1 , 
+                    diffuse: 0.9, 
+                    specular: 0.9, 
+                    shininess: 200.0,
+                    pattern: None,
+                    reflective: 0.0, 
+                    transparency: 0.0,
+                    refractive_index: 1.0}
     }
 }
 
@@ -656,7 +1069,19 @@ pub fn lighting(m: Material, object: &Box<dyn ShapeThings>, light:&PointLight,po
     }
 }
 
-
+pub fn reflected_color(w: & World, comps: Computations, remaining: u8) -> Color{  //better to use reference and implement call methods? or keep it ilke this and clone computations? edit: methods
+    if remaining <= 0{
+        return Color::black()
+    }
+    
+    if comps.object.get_material().reflective == 0.0 {
+        Color::black()
+    } else {
+        let reflect_ray = Ray::new(comps.get_over_point(), comps.get_reflectv());
+        let color = color_at(w, &reflect_ray, remaining - 1);
+        color * comps.object.get_material().reflective
+    }
+}
 
 #[derive(Debug, Clone,PartialEq)]
 pub struct Color{
@@ -739,25 +1164,25 @@ impl World{
     }
 ////
 }
-    pub fn intersect_world<'a>(w: &'a World,r:&'a Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
+pub fn intersect_world<'a>(w: &'a World,r:&'a Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
 
-        for (_i,j) in w.objects.iter().enumerate(){
-          
-            let j = &*j;
-            let  v = intersect_shape(r,j);
-            for (_a,b) in v.h.iter().enumerate(){   //CHECK 
-                let hits = b.clone(); //issue now bc intersect takes ownership of j
-                l.push(hits);
-            }
-        }
-        l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
-        let list_l= l.len() as u32;
-        let list_s = l.clone();
-        Intersections{ 
-            count: list_l,
-            h: list_s,
+    for (_i,j) in w.objects.iter().enumerate(){
+        
+        let j = &*j;
+        let  v = intersect_shape(r,j);
+        for (_a,b) in v.h.iter().enumerate(){   //CHECK 
+            let hits = b.clone(); //issue now bc intersect takes ownership of j
+            l.push(hits);
         }
     }
+    l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
+    let list_l= l.len() as u8;
+    let list_s = l.clone();
+    Intersections{ 
+        count: list_l,
+        h: list_s,
+    }
+}
 
 
 #[derive(Clone, Debug)]
@@ -768,15 +1193,53 @@ pub struct Computations{
     pub eyev: Element,
     pub normalv: Element,
     pub inside: bool,
-    pub over_point: Element
+    pub over_point: Element,
+    pub under_point: Element,
+    pub reflectv: Element,
+    pub n1: f64,
+    pub n2: f64,
 
 }
 
 impl Computations{
-    pub fn prepare_computations(i: &Intersection, r: &Ray) -> Computations
+
+    pub fn get_over_point(&self) -> Element{
+        self.clone().over_point
+    }
+
+    pub fn get_reflectv(&self) -> Element{
+        self.clone().reflectv
+    }
+    pub fn prepare_computations( hit: &Intersection, r: &Ray, xs: Intersections) -> Computations
     {
-        let t = i.t;
-        let object = &*i.o;
+        //let xs = xs.clone();
+        let mut containers: Vec<&Box<dyn ShapeThings>> = vec![];
+        let mut n1 = 1.0;
+        let mut n2 = 1.0;
+        for (_,i) in xs.h.iter().enumerate(){
+            if i == hit{
+                if containers.len() != 0{
+                    n1 = containers.last().unwrap().get_material().refractive_index;
+                    
+                }
+            }
+            match containers.iter().position(|&x| x == i.o) {
+                Some(x) => {containers.remove(x);},
+                None => { containers.push(i.o); }
+            }
+            if i == hit{
+                if !containers.is_empty(){ 
+                    n2 = containers.last().unwrap().get_material().refractive_index;
+                }
+                break
+            }
+            
+        }
+
+      
+
+        let t = hit.t;
+        let object = &*hit.o;
         let point =r.position(t);
         let mut normalv = normal_at(&**object, &point);
         let eyev= -r.clone().direction;
@@ -790,14 +1253,18 @@ impl Computations{
             inside = false;
         }
         
-        let c =Computations{
-            t: i.t,
-            object: i.o.clone(),
+        let c = Computations{
+            t: hit.t,
+            object: hit.o.clone(),
             point: point.clone(),
             eyev: eyev,
             normalv: normalv.clone(), //how to use clone less?
             inside: inside,
             over_point : point.clone() + normalv.clone() * EPSILON,
+            under_point : point.clone() - normalv.clone() * EPSILON,
+            reflectv: reflect(&r.clone().direction, &normalv.clone()),
+            n1: n1,
+            n2: n2,
         };
 
         c
@@ -805,21 +1272,62 @@ impl Computations{
     }
 }
 
-
-pub fn shade_hit(world: &World, obj: & Box<dyn ShapeThings> , comps: Computations) -> Color{
-    let shadowed = is_shadowed(world, &comps.over_point);
-    lighting(comps.object.get_material(), obj, &world.light_source, comps.point, comps.eyev, comps.normalv,shadowed)
+pub fn schlick(comps:Computations) -> f64 {
+    let mut cos = comps.eyev.dot(comps.normalv);
+    if comps.n1 > comps.n2 {
+        let n = comps.n1 / comps.n2;
+        let sin2_t = n.powi(2) * (1.0 - cos.powi(2));
+        if sin2_t > 1.0 { return 1.0 }
+        let cos_t = (1.0 - sin2_t).sqrt();
+        cos = cos_t;
+    }
+    let r0 = ((comps.n1 - comps.n2) / (comps.n1 + comps.n2)).powi(2);
+    r0 + (1.0 - r0) * (1.0 - cos).powi(5)
 }
 
-pub fn color_at(w: &World, r: &Ray) -> Color{
-    let mut intersections = intersect_world(w,r, vec![]);
+pub fn refracted_color(world: &World,comps: Computations, remaining: u8 ) -> Color{
+    let n_ratio = comps.n1/comps.n2;
+    let cos_i = comps.eyev.dot(comps.clone().normalv);
+    let sin2_t = n_ratio.powi(2) * (1.0 - cos_i.powi(2));
+
+    let cos_t = (1.0 - sin2_t).sqrt();
+    let direction = comps.normalv * (n_ratio * cos_i - cos_t) - comps.eyev * n_ratio;
+    let rr = Ray::new(comps.under_point, direction);
+
+    if comps.object.get_material().transparency == 0.0 || remaining == 0 || sin2_t > 1.0 {
+        Color::black()
+    } else{
+        color_at(world,&rr, remaining - 1 ) * comps.object.get_material().transparency
+    }
+
+}
+
+pub fn shade_hit(world: &World, comps: Computations, remaining: u8) -> Color{
+    let copy = comps.clone();
+    let shadowed = is_shadowed(world, &comps.over_point);
+    let surface = lighting(comps.object.get_material(), &comps.object, &world.light_source, comps.over_point, comps.eyev, comps.normalv,shadowed);
+    let reflected = reflected_color(world, copy.clone(), remaining); // can use copy twice bc get_material() is a reference, cannot used copy again after reflected_color
+    let refracted = refracted_color(world, copy.clone(), remaining);
+    let material = comps.object.get_material(); //we can use comps here bc it doesnt change ownership, above functions do
+    if material.reflective > 0.0 && material.transparency > 0.0 {
+        let reflectance = schlick(copy.clone());
+        return surface + reflected * reflectance + refracted * (1.0 - reflectance)
+    } else {
+        surface + reflected + refracted
+    }
+        
+}
+
+pub fn color_at(world: &World, r: &Ray, remaining: u8) -> Color{
+    let mut intersections = intersect_world(world,r, vec![]);
+    let i_c = intersections.clone();
     let hit = hit(&mut intersections);
 
     if hit.is_none() {
         Color::new(0.0,0.0,0.0)
     } else {
-        let comp = Computations::prepare_computations(hit.unwrap(),r);
-        shade_hit(w,hit.unwrap().o ,comp)
+        let comp = Computations::prepare_computations(hit.unwrap(),r, i_c);
+        shade_hit(world ,comp, remaining)
 
 
     }
@@ -892,7 +1400,7 @@ pub fn render(c: Camera, w: World) -> Canvas{
     for y in 0..c.vsize {
         for x in 0..c.hsize {
             let ray = c.ray_for_pixel(x, y);
-            let color = color_at(&w, &ray);
+            let color = color_at(&w, &ray, REMAIN);
             image.color(x.try_into().unwrap() ,y.try_into().unwrap(),color);
         }
     }
