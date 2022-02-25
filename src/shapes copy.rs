@@ -1,7 +1,6 @@
 use crate::canvas::Canvas;
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::rc::Weak;
 use crate::{Element,Matrix,point,vector,scale, translation};
 use crate::rays::{Ray, Intersections,Intersection,hit, intersect_shape};
 use std::rc::Rc;
@@ -327,7 +326,7 @@ impl<'a> A for Box<dyn ShapeThings>{
 
 
 
-pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use partialeq here bc it calls on Self, which for box<dyn..> we cannot have
+pub trait ShapeThings: CloneFoo + Any + std::fmt::Debug { //we cannot use partialeq here bc it calls on Self, which for box<dyn..> we cannot have
     
     fn intersect(&self,r: &Ray) -> Vec<f64>;
     fn get_transform(&self) -> Matrix;
@@ -338,8 +337,7 @@ pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use part
     fn get_kind(&self) -> Shapes;
     
     fn this_is(self) -> Box<dyn ShapeThings>;
-    fn set_parent(&mut self, g: Group);
-    fn get_parent(&self) -> Option<Rc<Group>>;
+    fn set_parent(&mut self, g: RefCell<Group>);
 
 
 }
@@ -364,7 +362,7 @@ impl Clone for Box<dyn ShapeThings> {
 }
 impl PartialEq for Box<dyn ShapeThings> {
     fn eq(&self, other: &Self) -> bool {
-        self.get_transform() == other.get_transform() && self.get_material() == other.get_material() && self.get_kind() == other.get_kind() 
+        self.get_transform() == other.get_transform() && self.get_material() == other.get_material() && self.get_kind() == other.get_kind()
        
     }
 }
@@ -397,11 +395,8 @@ impl Clone for Box<dyn Pattern> {
 
 #[derive(Debug,Clone, PartialEq)]
 pub struct Group{
-    pub kind: Shapes,
     pub transform: Matrix,
-    pub material: Material,
-    pub parent: Option<Rc<Group>>,
-    pub members: Vec<RefCell<Box<dyn ShapeThings>>>,
+    pub members: Vec<Rc<RefCell<Box<dyn ShapeThings>>>>,
 }
 
 // pub fn add_members(g: &Group, mut shape: Box<dyn ShapeThings> ){
@@ -411,123 +406,32 @@ pub struct Group{
 // }
 impl Group{
     pub fn new() -> Group {
-        Group { 
-                kind: Shapes::Group,
-                transform: Matrix::zero(4,4).identity(),
-                material: Material::new(),
-                parent: None,
+        Group { transform: Matrix::zero(4,4).identity(),
                 members: vec![] }
     }
-    
-    // pub fn get_members(&self) -> RefCell<Vec<Box<dyn ShapeThings>>> {
-    //     self.clone().members //cloned into new memory. this is what is returned, not original? 
-    // }
-
-    pub fn add_child(&mut self, shape: Box<dyn ShapeThings>){
-
-        //shape.set_parent(Rc::clone(&Rc::new(self)));
-        //let mut new_m = self.members.borrow_mut();
-        self.members.push(RefCell::new(shape)); 
-    }
-
-    // pub fn ray_transform(&self, r: Ray) -> Ray{
-    //     r.transform(&self.get_transform().invert().unwrap())
-    // }
-}
-impl ShapeThings for Group{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        eprintln!("{:?}",self.parent);
-        self.clone().parent
-    } 
-    fn get_kind(&self) -> Shapes { Shapes::Group}
-    fn intersect(&self,r: &Ray) -> Vec<f64>{
-
-        eprintln!("{:?}", r);
-        vec![] 
-    }
-    fn get_transform(&self) -> Matrix {
+    pub fn get_transform(&self) -> Matrix {
         self.clone().transform
     }
-    fn normal_at(&self, pos: &Element) -> Element{
-        let mut p = pos.clone();
-        p.matrix.matrix[3][0] = 0.0;
-        p
-    }
-    fn get_material(&self) -> Material {
-        let m_c = self.clone();
-        m_c.material
-    }
-    fn set_material(&mut self, m: Material){
-        self.material = m;
+    pub fn get_members(&self) -> Vec<Rc<RefCell<Box<dyn ShapeThings>>>> {
+        self.clone().members //cloned into new memory. this is what is returned, not original? 
     }
 
-    fn set_transform(&mut self,t: Matrix){ 
-    
-        self.transform = t;
+    pub fn add_child(self, shape: Box<dyn ShapeThings>){
+
+        //shape.set_parent(Rc::clone(&Rc::new(self)));
+        let mut new_m = self.members.borrow_mut();
+        new_m.push(shape); 
 
     }
 
-    fn this_is(self) -> Box<dyn ShapeThings>
-    {
-        Box::new(self) as Box<dyn ShapeThings>
-    }  
-}
-
-pub fn world_to_object(s: &Box<dyn ShapeThings>, p: &Element) 
-    -> Element{
-
-    //let mut new_p = p.clone().matrix;
-    if s.get_parent().is_some(){
-        let point = world_to_object(s, p);
-    }
-    Element{ matrix: s.get_transform().invert().unwrap().dot(p.clone().matrix).unwrap()}
-}
-
-pub fn take_members_out(g: &Group) -> Vec<Box<dyn ShapeThings>>{
-    let mut list = vec![];
-    for (i,e) in g.members.iter().enumerate(){
-        let e = e.clone();
-        let mut j = e.into_inner();
-        j.set_transform(g.get_transform().dot(j.get_transform()).unwrap());
-        list.push(j);
-    }
-    list
-}
-
-pub fn intersect<'a>( g: &'a Vec<Box<dyn ShapeThings>>, r: &'a Ray, mut l: Vec<Intersection<'a>>) -> Intersections<'a>{
-    
-    for (i,e) in g.iter().enumerate(){
-        let  v = intersect_shape(r,e);
-        for (_a,b) in v.h.iter().enumerate(){   //CHECK 
-            let hits = b.clone(); //issue now bc intersect takes ownership of j
-            l.push(hits);
+    pub fn update_parent_for_members(self){
+        for (i,e) in (self.members.borrow_mut()).iter_mut().enumerate(){
+            e.set_parent(RefCell::clone(self))
         }
     }
-    l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
-    let list_l= l.len() as u8;
-    let list_s = l.clone();
-    Intersections{ 
-        count: list_l,
-        h: list_s,
-    }
-
 }
 
 
-
-
-pub fn update_parent_for_members(g: &mut Group) {
-    
-    for (_i,e) in g.members.iter().enumerate(){ // triggers already mutably borrowed here
-       //let mut e = e.borrow_mut();
-        let g2 = g.clone(); //clone cannot be used if immutable //this is setting parent to before the parents are updated
-        e.borrow_mut().set_parent(g2)
-    }
-    
-}
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -538,15 +442,13 @@ pub enum Shapes{
     Cube,
     Cylinder,
     Cone,
-    Group,
 }
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Shape{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>, // double option when weak is upgraded (weak is a RC pointer)
+    pub parent: Option<Rc<RefCell<Group>>>,
     
 }
 
@@ -574,13 +476,9 @@ impl Shape {
 }
 
 impl ShapeThings for Shape{
-    fn set_parent(&mut self, parent: Group){
+    fn set_parent(&mut self, parent: RefCell<Group>){
         self.parent = Some(Rc::new(parent));
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        eprintln!("{:?}",self.parent);
-        self.clone().parent
-    } //doesnt work
     fn get_kind(&self) -> Shapes { Shapes::Shape}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
 
@@ -619,12 +517,12 @@ impl ShapeThings for Shape{
 
 
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Plane{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Group>>,
 }
 
 impl Plane {
@@ -641,11 +539,8 @@ impl Plane {
 
 
 impl ShapeThings for Plane{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        self.clone().parent
+    fn set_parent(&mut self, parent: RefCell<Group>){
+        self.parent = Some(parent);
     }
     fn get_kind(&self) -> Shapes { Shapes::Plane}
     fn set_material(&mut self, m: Material){
@@ -705,12 +600,12 @@ pub fn check_axis(origin: f64, direction: f64) -> [f64;2] {
 
     [tmin,tmax]
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct Cube{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Group>>,
 }
 
 impl Cube {
@@ -727,11 +622,8 @@ impl Cube {
 
 
 impl ShapeThings for Cube{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        self.clone().parent
+    fn set_parent(&mut self, parent: RefCell<Group>){
+        self.parent = Some(parent);
     }
     fn get_kind(&self) -> Shapes { Shapes::Cube}
     fn set_material(&mut self, m: Material){
@@ -793,7 +685,7 @@ impl ShapeThings for Cube{
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct Cylinder{
     pub transform: Matrix,
     pub material: Material,
@@ -801,7 +693,7 @@ pub struct Cylinder{
     pub max: f64,
     pub kind: Shapes,
     pub closed: bool,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Group>>,
 }
 
 impl Cylinder {
@@ -839,11 +731,8 @@ impl Cylinder {
 
 
 impl ShapeThings for Cylinder{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        self.clone().parent
+    fn set_parent(&mut self, parent: RefCell<Group>){
+        self.parent = Some(parent);
     }
     fn get_kind(&self) -> Shapes { Shapes::Cylinder}
     fn set_material(&mut self, m: Material){
@@ -916,7 +805,7 @@ impl ShapeThings for Cylinder{
 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct Cone{
     pub transform: Matrix,
     pub material: Material,
@@ -924,7 +813,7 @@ pub struct Cone{
     pub max: f64,
     pub kind: Shapes,
     pub closed: bool,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Group>>,
 }
 
 impl Cone {
@@ -961,11 +850,8 @@ impl Cone {
 
 
 impl ShapeThings for Cone{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        self.clone().parent
+    fn set_parent(&mut self, parent: RefCell<Group>){
+        self.parent = Some(parent);
     }
     fn get_kind(&self) -> Shapes { Shapes::Cone}
     fn set_material(&mut self, m: Material){
@@ -1052,12 +938,12 @@ impl ShapeThings for Cone{
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,PartialEq)]
 pub struct Sphere{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Group>>,
 }
 
 impl Sphere{
@@ -1088,11 +974,8 @@ impl Sphere{
 }
 
 impl ShapeThings for Sphere{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
-    }
-    fn get_parent(&self) -> Option<Rc<Group>> {
-        self.clone().parent
+    fn set_parent(&mut self, parent: RefCell<Group>){
+        self.parent = Some(parent);
     }
     fn get_kind(&self) -> Shapes { Shapes::Sphere}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
@@ -1354,11 +1237,6 @@ impl World{
         let mut s2 = Sphere::new();
         s2.set_transform(&scale(0.5,0.5,0.5));
         World { objects: vec![Box::new(s1) as Box<dyn ShapeThings> ,Box::new(s2) as Box<dyn ShapeThings>] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
-    }
-
-    pub fn empty() -> World {
-        World { objects: vec![] , 
-                light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
     }
 ////
 }

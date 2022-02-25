@@ -168,6 +168,10 @@ impl<'a> Intersections<'a>{
     pub fn empty() -> Intersections<'a>{
         Intersections { count: 0, h: vec![] }
     }
+    pub fn adder(mut self,mut other: Intersections<'a>) -> Intersections<'a>{
+        self.h.append(&mut other.h);
+        Intersections { count: self.count + other.count, h: self.h }
+    }
 }
 
 impl Ray{

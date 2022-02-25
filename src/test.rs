@@ -1,7 +1,8 @@
 
 #[cfg(test)]
 pub mod tests{
-
+    use std::rc::Rc;
+    use std::cell::RefCell;
     use crate::shapes::{*};
     use crate::Canvas;
     use crate::matrix::matrix::*;
@@ -113,7 +114,7 @@ pub mod tests{
     #[test]
     fn sphere_features(){
         let r1 = Ray::new(point(0.0,0.0,5.0), vector(0.0,0.0,1.0));
-        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
+        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};
         let xs = s1.intersect(&r1);
         eprintln!("{:?}",xs);
         assert_eq!(2,xs.len());
@@ -123,7 +124,7 @@ pub mod tests{
     #[test]
     fn sphere_features_2(){
         let r1 = Ray::new(point(0.0,0.0,-5.0), vector(0.0,0.0,1.0));
-        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
+        let mut s1 = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};
         let xs = s1.intersect(&r1);
         assert_eq!(2,xs.len());
         let s1 = s1.this_is();
@@ -182,7 +183,7 @@ pub mod tests{
 
     #[test]
     fn sphere_feature_3(){
-        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};
 
         let t = translation(2.0,3.0,4.0);
         s.set_transform(&t);
@@ -190,7 +191,7 @@ pub mod tests{
         //we can have set_tranform use a mut ref for self, it will not take ownership and changes the fields
 
         let r = Ray::new(point(0.0,0.0,-5.0),vector(0.0,0.0,1.0));
-        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};;
 
         s.set_transform(&scale(2.0,2.0,2.0)); // who is the owner of scale? -> the function set_tranform
         let xs = s.intersect(&r);
@@ -203,7 +204,7 @@ pub mod tests{
         assert_eq!(7.0,xs.h[1].t);
         assert_eq!(3.0,xs.h[0].t);
 
-        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};;
 
         let t = translation(5.0,0.0,0.0);
         s.set_transform(&t);
@@ -248,7 +249,7 @@ pub mod tests{
 //     }
     #[test]
     fn sphere_feature_4_78(){
-        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere};;
+        let mut s = Sphere{transform: Matrix::zero(4,4).identity(),material: Material::new(), kind: Shapes::Sphere, parent: None};;
 
         let n = normal_at(&s,&point(1.0,0.0,0.0));
         assert_eq!(vector(1.0,0.0,0.0),n);
@@ -1421,9 +1422,112 @@ pub mod tests{
             assert_eq!(e.1,n);
       
         }
+    }
+
+    #[test]
+    pub fn groups_feature_195(){
+        let mut g = Group::new();
+        assert_eq!(Shape::test().transform,g.transform);
+        assert_eq!(0, g.members.len());
+        assert_eq!(true, Shape::test().parent.is_none());//.unwrap().upgrade());
+
+        g.add_child(Shape::test().this_is()); // *** ALLOWS FOR CHANGE IN MEMBERS FIELD EVEN IF GROUP IS IMMUTABLE?? 
+        assert_ne!(0, g.members.len());
+        update_parent_for_members(&mut g); //&mut g and & g (with g being mut) are different
+        assert_eq!(g.members,vec![RefCell::new(Shape::test().this_is())]);
+        let parent = g.members[0].borrow().get_parent().unwrap();
+        assert_eq!(parent, Rc::new(g))
+   
+
+    }
+
+    #[test]
+    pub fn groups_feature_196(){
+        let mut g = Group::new();
+        let r = Ray::new(   point(0.0,0.0,0.0),
+                                vector(0.0,0.0,0.0));
+        //let xs = g.intersect(&r);
+        //assert_eq!(0,xs.len());
+
+        let s1 = Sphere::new();
+        let s1_c_b = s1.clone().this_is();
+        let mut s2 = Sphere::new();
+        s2.set_transform(&translation(0.0,0.0,-3.0));
+        let s2_c_b = s2.clone().this_is();
+
+        let mut s3 = Sphere::new();
+        s3.set_transform(&translation(5.0,0.0,0.0));
+        
+        
+        g.add_child(s1.this_is());
+        g.add_child(s2.this_is());
+        g.add_child(s3.this_is());
+        //eprintln!("{:?}",g);
+        update_parent_for_members(&mut g);
+        
+        let r = Ray::new(   point(0.0,0.0,0.0),
+                                vector(0.0,0.0,1.0));
+        let list = take_members_out(&g);
+        let results = intersect(&list,&r,vec![]);
+    
+        assert_eq!(4,results.count);
+        assert_eq!(&s2_c_b,results.h[0].o);
+        assert_eq!(&s2_c_b,results.h[1].o);
+        assert_eq!(&s1_c_b,results.h[2].o);
+        assert_eq!(&s1_c_b,results.h[3].o);
+        // issues in the beginning with intersections due to calling the local transform and not intersect_shape (where ray is transformed)
+        // note: update_parent_.. adds a Rc to a CLONED parent, therefore the parent(in the field) does not have the member's parent updated
+        // so in members -> parent [field] = parent[with members with parents:none], but the overall parent does have the individual members within the member field
+        // ran into the mutable borrow constraint with refcell, checked at compile time? or is it run time -> the later one
+        // issues with lifetimes not being consistent when using references -> tried references bc did not want to take ownership 
+        // vec![refcell] had to create a helper function to convert to just vec![] -> question now is why am i using refcell -> edit: hmm probably could use just vec!
+    }
+
+    #[test]
+    pub fn groups_feature_197(){
+        let mut g = Group::new();
+        let r = Ray::new(   point(0.0,0.0,0.0),
+                                vector(0.0,0.0,0.0));
+        g.set_transform(scale(2.0,2.0,2.0));
+
+        let mut s1 = Sphere::new();
+        s1.set_transform(&translation(5.0,0.0,0.0));
+        let s1_c_b = s1.clone().this_is();
+        g.add_child(s1.this_is());
+        update_parent_for_members(&mut g);
+        
+        let r = (Ray::new(   point(10.0,0.0,-10.0),
+                                vector(0.0,0.0,1.0)));
+        let list = take_members_out(&g);
+        let results = intersect(&list,&r,vec![]);
+    
+        assert_eq!(2,results.count);
+        //adding helper function to apply group's tranform to ray before the object's transform -> edit: implemented the transform in the TAKING OUT helper function
+
+    }
+
+    #[test]
+    pub fn shapes_feature_198(){
+        let mut g1 = Group::new();
+        g1.set_transform(rotate_y(PI/2.0));
+        let mut g2 = Group::new();
+        g2.set_transform(scale(2.0,2.0,2.0));
+        let g2_b = g2.clone().this_is();
+        g1.add_child(g2_b);
+        update_parent_for_members(&mut g1);
+
+        let mut s = Sphere::new();
+        s.set_transform(&translation(5.0,0.0,0.0));
+        g2.add_child(s.this_is());
+        let p = world_to_object(&g2.members[0].borrow(),&point(-2.0,0.0,-10.0));
+        assert_eq!(point(0.0,0.0,-1.0),p);
+
+
 
 
     }
+
+
 }
 
 

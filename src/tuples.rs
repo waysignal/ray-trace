@@ -11,6 +11,7 @@ pub fn vector (e0:f64 , e1:f64 , e2:f64) -> Element{
     }
 }
 
+
 pub fn point (e0:f64 , e1:f64 , e2:f64) -> Element{
     Element{
         matrix: Matrix::new(vec![vec![e0],vec![e1],vec![e2],vec![1.0_f64.clamp(0.0,1.0)]])
