@@ -1,5 +1,5 @@
 use crate::canvas::Canvas;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
 use std::rc::Weak;
 use crate::{Element,Matrix,point,vector,scale, translation};
@@ -339,7 +339,7 @@ pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use part
     
     fn this_is(self) -> Box<dyn ShapeThings>;
     fn set_parent(&mut self, g: Group);
-    fn get_parent(&self) -> Option<Rc<Group>>;
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>>;
 
 
 }
@@ -395,12 +395,12 @@ impl Clone for Box<dyn Pattern> {
 }
 
 
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug,Clone)]
 pub struct Group{
     pub kind: Shapes,
     pub transform: Matrix,
     pub material: Material,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
     pub members: Vec<RefCell<Box<dyn ShapeThings>>>,
 }
 
@@ -409,6 +409,14 @@ pub struct Group{
 //     g.update_members(shape);
 
 // }
+impl PartialEq for Group{
+    fn eq(&self, other: &Self) -> bool {
+        self.get_transform() == other.get_transform() && self.get_material() == other.get_material() && self.get_kind() == other.get_kind()
+          && self.get_members() == other.get_members()
+       
+    }
+
+}
 impl Group{
     pub fn new() -> Group {
         Group { 
@@ -419,16 +427,18 @@ impl Group{
                 members: vec![] }
     }
     
-    // pub fn get_members(&self) -> RefCell<Vec<Box<dyn ShapeThings>>> {
-    //     self.clone().members //cloned into new memory. this is what is returned, not original? 
-    // }
+    pub fn get_members(&self) -> Vec<RefCell<Box<dyn ShapeThings>>> {
+        self.clone().members //cloned into new memory. this is what is returned, not original? 
+    }
 
-    pub fn add_child(&mut self, shape: Box<dyn ShapeThings>){
+    pub fn add_child(&mut self, shape: &Box<dyn ShapeThings>){
 
         //shape.set_parent(Rc::clone(&Rc::new(self)));
         //let mut new_m = self.members.borrow_mut();
-        self.members.push(RefCell::new(shape)); 
+        let hold = shape.clone();
+        self.members.push(RefCell::new(hold)); 
     }
+ 
 
     // pub fn ray_transform(&self, r: Ray) -> Ray{
     //     r.transform(&self.get_transform().invert().unwrap())
@@ -436,9 +446,9 @@ impl Group{
 }
 impl ShapeThings for Group{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))));
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         eprintln!("{:?}",self.parent);
         self.clone().parent
     } 
@@ -546,7 +556,7 @@ pub struct Shape{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>, // double option when weak is upgraded (weak is a RC pointer)
+    pub parent: Option<RefCell<Weak<Group>>>, // double option when weak is upgraded (weak is a RC pointer)
     
 }
 
@@ -575,9 +585,9 @@ impl Shape {
 
 impl ShapeThings for Shape{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         eprintln!("{:?}",self.parent);
         self.clone().parent
     } //doesnt work
@@ -624,7 +634,7 @@ pub struct Plane{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
 }
 
 impl Plane {
@@ -642,9 +652,9 @@ impl Plane {
 
 impl ShapeThings for Plane{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         self.clone().parent
     }
     fn get_kind(&self) -> Shapes { Shapes::Plane}
@@ -710,7 +720,7 @@ pub struct Cube{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
 }
 
 impl Cube {
@@ -728,9 +738,9 @@ impl Cube {
 
 impl ShapeThings for Cube{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         self.clone().parent
     }
     fn get_kind(&self) -> Shapes { Shapes::Cube}
@@ -801,7 +811,7 @@ pub struct Cylinder{
     pub max: f64,
     pub kind: Shapes,
     pub closed: bool,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
 }
 
 impl Cylinder {
@@ -840,9 +850,9 @@ impl Cylinder {
 
 impl ShapeThings for Cylinder{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         self.clone().parent
     }
     fn get_kind(&self) -> Shapes { Shapes::Cylinder}
@@ -924,7 +934,7 @@ pub struct Cone{
     pub max: f64,
     pub kind: Shapes,
     pub closed: bool,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
 }
 
 impl Cone {
@@ -962,9 +972,9 @@ impl Cone {
 
 impl ShapeThings for Cone{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         self.clone().parent
     }
     fn get_kind(&self) -> Shapes { Shapes::Cone}
@@ -1057,7 +1067,7 @@ pub struct Sphere{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<Rc<Group>>,
+    pub parent: Option<RefCell<Weak<Group>>>,
 }
 
 impl Sphere{
@@ -1089,9 +1099,9 @@ impl Sphere{
 
 impl ShapeThings for Sphere{
     fn set_parent(&mut self, parent: Group){
-        self.parent = Some(Rc::new(parent));
+        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
     }
-    fn get_parent(&self) -> Option<Rc<Group>> {
+    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
         self.clone().parent
     }
     fn get_kind(&self) -> Shapes { Shapes::Sphere}
