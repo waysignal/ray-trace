@@ -333,13 +333,14 @@ pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use part
     fn get_transform(&self) -> Matrix;
     fn normal_at(&self, pos: &Element) -> Element;
     fn get_material(&self) -> Material;
-    fn set_transform(&mut self,t: Matrix);
+    fn set_transform(&self,t: Matrix) -> Box<dyn ShapeThings>;
     fn set_material(&mut self, m: Material);
     fn get_kind(&self) -> Shapes;
     
     fn this_is(self) -> Box<dyn ShapeThings>;
-    fn set_parent(&mut self, g: Group);
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>>;
+    fn set_parent(&mut self, g: &Rc<RefCell<Group>>);
+    fn get_parent(& self) -> RefCell<Weak<RefCell<Group>>>;
+    fn has_parent(& self) -> bool;
 
 
 }
@@ -400,15 +401,11 @@ pub struct Group{
     pub kind: Shapes,
     pub transform: Matrix,
     pub material: Material,
-    pub parent: Option<RefCell<Weak<Group>>>,
-    pub members: Vec<RefCell<Box<dyn ShapeThings>>>,
+    pub parent: RefCell<Weak<RefCell<Group>>>,
+    pub sub_group: RefCell<Vec<Weak<RefCell<Group>>>>,
+    pub members: Vec<RefCell<Box<dyn ShapeThings>>>, //one parent per structure -> no multiple owners of child, so removing rc<refcell and just using : unless i need it to go in to update parents
 }
 
-// pub fn add_members(g: &Group, mut shape: Box<dyn ShapeThings> ){
-//     g.add_child(&mut shape);
-//     g.update_members(shape);
-
-// }
 impl PartialEq for Group{
     fn eq(&self, other: &Self) -> bool {
         self.get_transform() == other.get_transform() && self.get_material() == other.get_material() && self.get_kind() == other.get_kind()
@@ -423,35 +420,85 @@ impl Group{
                 kind: Shapes::Group,
                 transform: Matrix::zero(4,4).identity(),
                 material: Material::new(),
-                parent: None,
-                members: vec![] }
+                parent: RefCell::new(Weak::new()),
+                sub_group: RefCell::new(vec![]),
+                members: vec![], }
     }
     
-    pub fn get_members(&self) -> Vec<RefCell<Box<dyn ShapeThings>>> {
-        self.clone().members //cloned into new memory. this is what is returned, not original? 
+    pub fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>> {
+        &self.members //cloned into new memory. this is what is returned, not original? 
+    }
+    pub fn add_sub_group(self, g: &Rc<RefCell<Group>>) -> Group{ //use & instead here bc we do not want to take ownership
+        self.sub_group.borrow_mut().push(Rc::downgrade(g));
+        self
     }
 
-    pub fn add_child(&mut self, shape: &Box<dyn ShapeThings>){
+    pub fn set_parent_sub_group(&mut self, gp: &Rc<RefCell<Group>>){
+    
+        *self.parent.borrow_mut() = Rc::downgrade(gp)
+        
+    }
+    pub fn add_child(&mut self, shape: RefCell<Box<dyn ShapeThings>>){
+        // thought about moving the update_parent function here bc it would be "easier" to just update the fields when new members are coming in, but ran
+        // into issue of constructing a new Rc for the group, "what does this do to the count?"
+        // let g_rc = Rc::new(*self);
+        // let shape = **shape;
+        // shape.set_parent(Rc::clone(&g_rc));
 
-        //shape.set_parent(Rc::clone(&Rc::new(self)));
-        //let mut new_m = self.members.borrow_mut();
-        let hold = shape.clone();
-        self.members.push(RefCell::new(hold)); 
+        self.members.push(shape); 
+        
+    }
+
+    pub fn set_transform_group(self,t: Matrix) -> Group{ 
+        let mut copy = self.clone();
+        copy.transform = t;
+        copy
+        
+
     }
  
+
 
     // pub fn ray_transform(&self, r: Ray) -> Ray{
     //     r.transform(&self.get_transform().invert().unwrap())
     // }
 }
-impl ShapeThings for Group{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))));
+
+pub fn update_parent_for_members(g: &Group, g_rc: Rc<RefCell<Group>>) {
+    //let mut last = g.members.last().unwrap().borrow_mut(); 
+    
+    //let last = (**last.borrow_mut().last_mut().unwrap()).borrow_mut();
+    
+    //let g2 = Rc::clone(&g_rc);
+    //last.set_parent(&g_rc);
+    
+    
+    for (_i,e) in g.members.iter().enumerate(){ // triggers already mutably borrowed here
+       //let mut e = e.borrow_mut();
+        let mut e = e.borrow_mut();
+        let g2 = Rc::clone(&g_rc);//let g2 = g.clone(); //clone cannot be used if immutable //this is setting parent to before the parents are updated
+        e.set_parent(&g2);
     }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        eprintln!("{:?}",self.parent);
-        self.clone().parent
+     
+}
+
+
+
+impl ShapeThings for Group{ 
+    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+        *self.parent.borrow_mut() = Rc::downgrade(&parent)
+        //self.parent.push(RefCell::new(Rc::downgrade(&parent)));
+    }
+    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+        let copy = self.clone();
+        copy.parent
     } 
+    fn has_parent(& self) -> bool{
+        if self.parent.borrow_mut().upgrade().is_some() { return true}
+        false 
+    }
+
+    
     fn get_kind(&self) -> Shapes { Shapes::Group}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
 
@@ -474,9 +521,10 @@ impl ShapeThings for Group{
         self.material = m;
     }
 
-    fn set_transform(&mut self,t: Matrix){ 
-    
-        self.transform = t;
+    fn set_transform(&self,t: Matrix) -> Box<dyn ShapeThings>{ 
+        let mut copy = self.clone();
+        copy.transform = t;
+        Box::new(copy)
 
     }
 
@@ -486,31 +534,39 @@ impl ShapeThings for Group{
     }  
 }
 
-pub fn world_to_object(s: &Box<dyn ShapeThings>, p: &Element) 
+pub fn world_to_object(s: &mut Box<dyn ShapeThings>, p: &Element) 
     -> Element{
-
+    let mut point = p;
     //let mut new_p = p.clone().matrix;
-    if s.get_parent().is_some(){
-        let point = world_to_object(s, p);
+    if s.has_parent(){
+        let mut pp = Rc::try_unwrap(s.get_parent().borrow().upgrade().unwrap()).unwrap().into_inner();
+        let mut pp = Box::new(pp) as Box<dyn ShapeThings>;
+        //point = &world_to_object(s.get_parent().borrow_mut(), p);
     }
     Element{ matrix: s.get_transform().invert().unwrap().dot(p.clone().matrix).unwrap()}
 }
 
-pub fn take_members_out(g: &Group) -> Vec<Box<dyn ShapeThings>>{
+pub fn take_members_out(g: & Group) -> Vec<Box<dyn ShapeThings>>{
+
     let mut list = vec![];
-    for (i,e) in g.members.iter().enumerate(){
+    //let g = g.members;
+    for (_i,e) in g.members.iter().enumerate(){
         let e = e.clone();
-        let mut j = e.into_inner();
-        j.set_transform(g.get_transform().dot(j.get_transform()).unwrap());
+        let j = e.into_inner();
+        let matrix = g.get_transform().dot(j.get_transform()).unwrap();
+        let j = j.set_transform(matrix);
+        // let j = j.set_transform(matrix); error: cannot move a value of type dyn shapes::ShapeThings: the size of dyn shapes::ShapeThings cannot be statically determined
+        // function consumes j of type dyn shapes::ShapeThings which cannot be determined bc it is dynamic
         list.push(j);
     }
     list
 }
 
 pub fn intersect<'a>( g: &'a Vec<Box<dyn ShapeThings>>, r: &'a Ray, mut l: Vec<Intersection<'a>>) -> Intersections<'a>{
-    
-    for (i,e) in g.iter().enumerate(){
+
+    for (_i,e) in g.iter().enumerate(){
         let  v = intersect_shape(r,e);
+
         for (_a,b) in v.h.iter().enumerate(){   //CHECK 
             let hits = b.clone(); //issue now bc intersect takes ownership of j
             l.push(hits);
@@ -529,15 +585,7 @@ pub fn intersect<'a>( g: &'a Vec<Box<dyn ShapeThings>>, r: &'a Ray, mut l: Vec<I
 
 
 
-pub fn update_parent_for_members(g: &mut Group) {
-    
-    for (_i,e) in g.members.iter().enumerate(){ // triggers already mutably borrowed here
-       //let mut e = e.borrow_mut();
-        let g2 = g.clone(); //clone cannot be used if immutable //this is setting parent to before the parents are updated
-        e.borrow_mut().set_parent(g2)
-    }
-    
-}
+
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -556,7 +604,9 @@ pub struct Shape{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<RefCell<Weak<Group>>>, // double option when weak is upgraded (weak is a RC pointer)
+    pub parent: RefCell<Weak<RefCell<Group>>>,
+    
+     // double option when weak is upgraded (weak is a RC pointer)
     
 }
 
@@ -577,25 +627,36 @@ impl Shape {
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(),
             kind: Shapes::Shape,
-            parent: None,
+            parent: RefCell::new(Weak::new()),
             
         }
     }
 }
 
 impl ShapeThings for Shape{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
+    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+        *self.parent.borrow_mut() = Rc::downgrade(parent)
     }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        eprintln!("{:?}",self.parent);
-        self.clone().parent
-    } //doesnt work
+    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+        let copy = self.clone();
+        copy.parent
+    } 
+    fn has_parent(& self) -> bool{
+        if self.parent.borrow_mut().upgrade().is_some() { return true}
+        false 
+    }
+
     fn get_kind(&self) -> Shapes { Shapes::Shape}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
 
         eprintln!("{:?}", r);
         vec![] 
+    }
+    fn set_transform(&self,t: Matrix) -> Box<dyn ShapeThings>{ 
+        let mut copy = self.clone();
+        copy.transform = t;
+        Box::new(copy)
+
     }
     fn get_transform(&self) -> Matrix {
         self.clone().transform
@@ -613,11 +674,6 @@ impl ShapeThings for Shape{
         self.material = m;
     }
 
-    fn set_transform(&mut self,t: Matrix){ 
-    
-        self.transform = t;
-
-    }
 
     fn this_is(self) -> Box<dyn ShapeThings>
     {
@@ -628,434 +684,452 @@ impl ShapeThings for Shape{
 }
 
 
+//////////////////////////////////////////
+// /// 
+// #[derive(Debug,Clone)]
+// pub struct Plane{
+//     pub transform: Matrix,
+//     pub material: Material,
+//     pub kind: Shapes,
+//     pub parent: RefCell<Weak<Group>>,
+    
+// }
 
-#[derive(Debug,Clone)]
-pub struct Plane{
-    pub transform: Matrix,
-    pub material: Material,
-    pub kind: Shapes,
-    pub parent: Option<RefCell<Weak<Group>>>,
-}
-
-impl Plane {
-    pub fn new() -> Plane{
-        Plane{
-            transform: Matrix::zero(4,4).identity(),
-            material: Material::new(),
-            kind: Shapes::Plane,
-            parent: None,
+// impl Plane {
+//     pub fn new() -> Plane{
+//         Plane{
+//             transform: Matrix::zero(4,4).identity(),
+//             material: Material::new(),
+//             kind: Shapes::Plane,
+//             parent: RefCell::new(Weak::new()),
             
-        }
-    }
-}
+//         }
+//     }
+// }
 
 
-impl ShapeThings for Plane{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
-    }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        self.clone().parent
-    }
-    fn get_kind(&self) -> Shapes { Shapes::Plane}
-    fn set_material(&mut self, m: Material){
-        self.material = m;
-    }
+// impl ShapeThings for Plane{
+//         fn set_parent(&mut self, parent: Rc<Group>){
+//         *self.parent.borrow_mut() = Rc::downgrade(&parent)
+//     }
+//     fn get_parent(&mut self) -> &RefCell<Weak<Group>> {
+//         &self.parent
+//     } 
+//     fn has_parent(& self) -> bool{
+//         if self.parent.borrow().upgrade().is_some() { return true}
+//         false 
+//     }
+//     fn get_kind(&self) -> Shapes { Shapes::Plane}
+//     fn set_material(&mut self, m: Material){
+//         self.material = m;
+//     }
 
-    fn set_transform(&mut self,t: Matrix){ 
+//     fn set_transform(&mut self,t: Matrix){ 
     
-        self.transform = t;
+//         self.transform = t;
 
-    }
+//     }
     
-    fn intersect(&self,r: &Ray) -> Vec<f64>{
+//     fn intersect(&self,r: &Ray) -> Vec<f64>{
         
-        if (r.direction.y()).abs() < EPSILON{
-            vec![]
-        } else {
-            let t = -r.origin.y()/r.direction.y();
+//         if (r.direction.y()).abs() < EPSILON{
+//             vec![]
+//         } else {
+//             let t = -r.origin.y()/r.direction.y();
             
-            vec![t]  //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
-            //Plane is too defined, need to push it to trait level
-        }
-    }
-    fn this_is(self) -> Box<dyn ShapeThings>
-    {
-        Box::new(self) as Box<dyn ShapeThings>
+//             vec![t]  //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
+//             //Plane is too defined, need to push it to trait level
+//         }
+//     }
+//     fn this_is(self) -> Box<dyn ShapeThings>
+//     {
+//         Box::new(self) as Box<dyn ShapeThings>
     
-    }
+//     }
     
-    fn get_transform(&self) -> Matrix {
-        self.clone().transform
-    }
-    fn normal_at(&self, _pos: &Element) -> Element{
-        vector(0.0,1.0,0.0)
-    }
-    fn get_material(&self) -> Material {
-        let m_c = self.clone();
-        m_c.material
-    }
+//     fn get_transform(&self) -> Matrix {
+//         self.clone().transform
+//     }
+//     fn normal_at(&self, _pos: &Element) -> Element{
+//         vector(0.0,1.0,0.0)
+//     }
+//     fn get_material(&self) -> Material {
+//         let m_c = self.clone();
+//         m_c.material
+//     }
 
-}
+// }
 
-pub fn check_axis(origin: f64, direction: f64) -> [f64;2] {
-    let tmin_numerator = -1.0 - origin;
-    let tmax_numerator = 1.0 - origin;
-    let mut tmin = 0.0;
-    let mut tmax = 0.0;
-    if (direction.abs()) >= EPSILON{
-        tmin = tmin_numerator / direction;
-        tmax = tmax_numerator / direction;
-    } else {
-        tmin = tmin_numerator * f64::INFINITY;
-        tmax = tmax_numerator * f64::INFINITY;
-    }
+// pub fn check_axis(origin: f64, direction: f64) -> [f64;2] {
+//     let tmin_numerator = -1.0 - origin;
+//     let tmax_numerator = 1.0 - origin;
+//     let mut tmin = 0.0;
+//     let mut tmax = 0.0;
+//     if (direction.abs()) >= EPSILON{
+//         tmin = tmin_numerator / direction;
+//         tmax = tmax_numerator / direction;
+//     } else {
+//         tmin = tmin_numerator * f64::INFINITY;
+//         tmax = tmax_numerator * f64::INFINITY;
+//     }
 
-    if tmin > tmax { std::mem::swap(&mut tmin, &mut tmax)}
+//     if tmin > tmax { std::mem::swap(&mut tmin, &mut tmax)}
 
-    [tmin,tmax]
-}
-#[derive(Debug, Clone)]
-pub struct Cube{
-    pub transform: Matrix,
-    pub material: Material,
-    pub kind: Shapes,
-    pub parent: Option<RefCell<Weak<Group>>>,
-}
+//     [tmin,tmax]
+// }
+// #[derive(Debug, Clone)]
+// pub struct Cube{
+//     pub transform: Matrix,
+//     pub material: Material,
+//     pub kind: Shapes,
+//     pub parent: RefCell<Weak<Group>>,
+    
+// }
 
-impl Cube {
-    pub fn new() -> Cube{
-        Cube{
-            transform: Matrix::zero(4,4).identity(),
-            material: Material::new(),
-            kind: Shapes::Cube,
-            parent: None,
+// impl Cube {
+//     pub fn new() -> Cube{
+//         Cube{
+//             transform: Matrix::zero(4,4).identity(),
+//             material: Material::new(),
+//             kind: Shapes::Cube,
+//             parent: RefCell::new(Weak::new()),
             
-        }
-    }
-}
+//         }
+//     }
+// }
 
 
-impl ShapeThings for Cube{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
-    }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        self.clone().parent
-    }
-    fn get_kind(&self) -> Shapes { Shapes::Cube}
-    fn set_material(&mut self, m: Material){
-        self.material = m;
-    }
+// impl ShapeThings for Cube{
+//         fn set_parent(&mut self, parent: Rc<Group>){
+//         *self.parent.borrow_mut() = Rc::downgrade(&parent)
+//     }
+//     fn get_parent(&mut self) -> &RefCell<Weak<Group>> {
+//         &self.parent
+//     } 
+//     fn has_parent(& self) -> bool{
+//         if self.parent.borrow().upgrade().is_some() { return true}
+//         false 
+//     }    fn get_kind(&self) -> Shapes { Shapes::Cube}
+//     fn set_material(&mut self, m: Material){
+//         self.material = m;
+//     }
 
-    fn set_transform(&mut self,t: Matrix){ 
+//     fn set_transform(&mut self,t: Matrix){ 
     
-        self.transform = t;
+//         self.transform = t;
 
-    }
+//     }
     
-    fn intersect(&self,r: &Ray) -> Vec<f64>{
-        let [xtmin,xtmax] = check_axis(r.origin.x(), r.direction.x());
-        let [ytmin,ytmax] = check_axis(r.origin.y(), r.direction.y());
-        let [ztmin,ztmax] = check_axis(r.origin.z(), r.direction.z());
-        //finding largest min, and smallest max
-        let tmin = *[xtmin,ytmin,ztmin].iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-        //let tmin = [xtmin,ytmin,ztmin].iter().fold(0.0_f64, |a, &b| a.max(b));
-        //let tmax = [xtmax,ytmax,ztmax].iter().fold(f64::INFINITY, |a, &b| a.min(b));
-        let tmax = *[xtmax,ytmax,ztmax].iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-        if tmin > tmax { return vec![] } 
-        vec![tmin,tmax]
+//     fn intersect(&self,r: &Ray) -> Vec<f64>{
+//         let [xtmin,xtmax] = check_axis(r.origin.x(), r.direction.x());
+//         let [ytmin,ytmax] = check_axis(r.origin.y(), r.direction.y());
+//         let [ztmin,ztmax] = check_axis(r.origin.z(), r.direction.z());
+//         //finding largest min, and smallest max
+//         let tmin = *[xtmin,ytmin,ztmin].iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+//         //let tmin = [xtmin,ytmin,ztmin].iter().fold(0.0_f64, |a, &b| a.max(b));
+//         //let tmax = [xtmax,ytmax,ztmax].iter().fold(f64::INFINITY, |a, &b| a.min(b));
+//         let tmax = *[xtmax,ytmax,ztmax].iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+//         if tmin > tmax { return vec![] } 
+//         vec![tmin,tmax]
  
 
 
-    }
-    fn this_is(self) -> Box<dyn ShapeThings>
-    {
-        Box::new(self) as Box<dyn ShapeThings>
+//     }
+//     fn this_is(self) -> Box<dyn ShapeThings>
+//     {
+//         Box::new(self) as Box<dyn ShapeThings>
     
-    }
+//     }
     
-    fn get_transform(&self) -> Matrix {
-        self.clone().transform
-    }
-    fn normal_at(&self, pos: &Element) -> Element{
-        let x = pos.x().abs();
-        let y = pos.y().abs();
-        let z = pos.z().abs();
-        let maxc = *[x,y,z].iter().max_by(|a,b| a.partial_cmp(b).unwrap()).unwrap();
-        // match maxc {
-        //     x if x == maxc => vector(pos.x(),0.0,0.0),
-        //     y if y == maxc => vector(0.0,pos.y(),0.0),
-        //     _ => vector(0.0,0.0,pos.z()),
-        // } ??? returns first match even when not true
-        if maxc == x { return vector(pos.x(),0.0,0.0)}
-        else if maxc == y { return vector(0.0,pos.y(),0.0)}
-        vector(0.0,0.0,pos.z())
-    }
-    fn get_material(&self) -> Material {
-        let m_c = self.clone();
-        m_c.material
-    }
+//     fn get_transform(&self) -> Matrix {
+//         self.clone().transform
+//     }
+//     fn normal_at(&self, pos: &Element) -> Element{
+//         let x = pos.x().abs();
+//         let y = pos.y().abs();
+//         let z = pos.z().abs();
+//         let maxc = *[x,y,z].iter().max_by(|a,b| a.partial_cmp(b).unwrap()).unwrap();
+//         // match maxc {
+//         //     x if x == maxc => vector(pos.x(),0.0,0.0),
+//         //     y if y == maxc => vector(0.0,pos.y(),0.0),
+//         //     _ => vector(0.0,0.0,pos.z()),
+//         // } ??? returns first match even when not true
+//         if maxc == x { return vector(pos.x(),0.0,0.0)}
+//         else if maxc == y { return vector(0.0,pos.y(),0.0)}
+//         vector(0.0,0.0,pos.z())
+//     }
+//     fn get_material(&self) -> Material {
+//         let m_c = self.clone();
+//         m_c.material
+//     }
 
-}
-
-
+// }
 
 
 
-#[derive(Debug, Clone)]
-pub struct Cylinder{
-    pub transform: Matrix,
-    pub material: Material,
-    pub min: f64,
-    pub max: f64,
-    pub kind: Shapes,
-    pub closed: bool,
-    pub parent: Option<RefCell<Weak<Group>>>,
-}
-
-impl Cylinder {
-    pub fn new() -> Cylinder{
-        Cylinder{
-            transform: Matrix::zero(4,4).identity(),
-            material: Material::new(),
-            min: f64::NEG_INFINITY,
-            max: f64::INFINITY,
-            kind: Shapes::Cylinder,
-            closed: false,    
-            parent: None,
-        }
-    }
-
-    pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
-        if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
-            return
-        }
-
-        let t = (self.min - r.origin.y()) / r.direction.y();
-        if self.check_cap(r,t) { xs.push(t)}
-        let t = (self.max - r.origin.y()) / r.direction.y();
-        if self.check_cap(r,t) { xs.push(t)}
 
 
-    }
-
-    pub fn check_cap(&self, r: &Ray, t: f64) -> bool {
-        let x = r.origin.x() + t * r.direction.x();
-        let z = r.origin.z() + t * r.direction.z();
-        (x.powi(2) + z.powi(2)) <= 1.0
-    }
-}
-
-
-impl ShapeThings for Cylinder{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
-    }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        self.clone().parent
-    }
-    fn get_kind(&self) -> Shapes { Shapes::Cylinder}
-    fn set_material(&mut self, m: Material){
-        self.material = m;
-    }
-
-    fn set_transform(&mut self,t: Matrix){ 
+// #[derive(Debug, Clone)]
+// pub struct Cylinder{
+//     pub transform: Matrix,
+//     pub material: Material,
+//     pub min: f64,
+//     pub max: f64,
+//     pub kind: Shapes,
+//     pub closed: bool,
+//     pub parent: RefCell<Weak<Group>>,
     
-        self.transform = t;
+// }
 
-    }
+// impl Cylinder {
+//     pub fn new() -> Cylinder{
+//         Cylinder{
+//             transform: Matrix::zero(4,4).identity(),
+//             material: Material::new(),
+//             min: f64::NEG_INFINITY,
+//             max: f64::INFINITY,
+//             kind: Shapes::Cylinder,
+//             closed: false,    
+//             parent: RefCell::new(Weak::new()),
+//         }
+//     }
+
+//     pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
+//         if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
+//             return
+//         }
+
+//         let t = (self.min - r.origin.y()) / r.direction.y();
+//         if self.check_cap(r,t) { xs.push(t)}
+//         let t = (self.max - r.origin.y()) / r.direction.y();
+//         if self.check_cap(r,t) { xs.push(t)}
+
+
+//     }
+
+//     pub fn check_cap(&self, r: &Ray, t: f64) -> bool {
+//         let x = r.origin.x() + t * r.direction.x();
+//         let z = r.origin.z() + t * r.direction.z();
+//         (x.powi(2) + z.powi(2)) <= 1.0
+//     }
+// }
+
+
+// impl ShapeThings for Cylinder{
+//         fn set_parent(&mut self, parent: Rc<Group>){
+//         *self.parent.borrow_mut() = Rc::downgrade(&parent)
+//     }
+//     fn get_parent(&mut self) -> &RefCell<Weak<Group>> {
+//         &self.parent
+//     } 
+//     fn has_parent(& self) -> bool{
+//         if self.parent.borrow().upgrade().is_some() { return true}
+//         false 
+//     }    fn get_kind(&self) -> Shapes { Shapes::Cylinder}
+//     fn set_material(&mut self, m: Material){
+//         self.material = m;
+//     }
+
+//     fn set_transform(&mut self,t: Matrix){ 
     
-    fn intersect(&self,r: &Ray) -> Vec<f64>{
-        let mut xs:Vec<f64> = vec![];
-        let a = r.direction.x().powi(2) + r.direction.z().powi(2);
+//         self.transform = t;
 
-        if equal_floats(&0.0_f64,&a) {         
-            self.intersect_cap(r,&mut xs);
+//     }
+    
+//     fn intersect(&self,r: &Ray) -> Vec<f64>{
+//         let mut xs:Vec<f64> = vec![];
+//         let a = r.direction.x().powi(2) + r.direction.z().powi(2);
+
+//         if equal_floats(&0.0_f64,&a) {         
+//             self.intersect_cap(r,&mut xs);
               
-        } else {
+//         } else {
 
-            let b = 2.0 * r.origin.x() * r.direction.x() +
-                    2.0 * r.origin.z() * r.direction.z();
-            let c = r.origin.x().powi(2) + r.origin.z().powi(2) - 1.0;
+//             let b = 2.0 * r.origin.x() * r.direction.x() +
+//                     2.0 * r.origin.z() * r.direction.z();
+//             let c = r.origin.x().powi(2) + r.origin.z().powi(2) - 1.0;
 
-            let disc = b.powi(2) - 4.0 * a * c;
+//             let disc = b.powi(2) - 4.0 * a * c;
             
-            if disc < 0.0 { return xs }
+//             if disc < 0.0 { return xs }
             
-            let mut t0 = (-b - disc.sqrt())/(2.0*a);
-            let mut t1 = (-b + disc.sqrt())/(2.0*a);
-            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+//             let mut t0 = (-b - disc.sqrt())/(2.0*a);
+//             let mut t1 = (-b + disc.sqrt())/(2.0*a);
+//             if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
             
-            let y0 = r.origin.y() + t0 * r.direction.y();
-            if self.min < y0 && y0 < self.max {
-                xs.push(t0);
-            }
-            let y1 = r.origin.y() + t1 * r.direction.y();
-            if self.min < y1 && y1 < self.max {
-                xs.push(t1);
-            }
-            self.intersect_cap(r,&mut xs);
-        }
-        xs
+//             let y0 = r.origin.y() + t0 * r.direction.y();
+//             if self.min < y0 && y0 < self.max {
+//                 xs.push(t0);
+//             }
+//             let y1 = r.origin.y() + t1 * r.direction.y();
+//             if self.min < y1 && y1 < self.max {
+//                 xs.push(t1);
+//             }
+//             self.intersect_cap(r,&mut xs);
+//         }
+//         xs
 
-    }
+//     }
 
-    fn this_is(self) -> Box<dyn ShapeThings>
-    {
-        Box::new(self) as Box<dyn ShapeThings>
+//     fn this_is(self) -> Box<dyn ShapeThings>
+//     {
+//         Box::new(self) as Box<dyn ShapeThings>
     
-    }
+//     }
     
-    fn get_transform(&self) -> Matrix {
-        self.clone().transform
-    }
-    fn normal_at(&self, pos: &Element) -> Element{
-        let dist = pos.x().powi(2) + pos.z().powi(2);
-        if dist < 1.0 && pos.y() >= self.max - EPSILON {
-            return vector (0.0,1.0,0.0)
-        } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
-            return vector(0.0,-1.0,0.0)
-        }
-        vector(pos.x(),0.0,pos.z())
-    }
-    fn get_material(&self) -> Material {
-        let m_c = self.clone();
-        m_c.material
-    }
+//     fn get_transform(&self) -> Matrix {
+//         self.clone().transform
+//     }
+//     fn normal_at(&self, pos: &Element) -> Element{
+//         let dist = pos.x().powi(2) + pos.z().powi(2);
+//         if dist < 1.0 && pos.y() >= self.max - EPSILON {
+//             return vector (0.0,1.0,0.0)
+//         } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
+//             return vector(0.0,-1.0,0.0)
+//         }
+//         vector(pos.x(),0.0,pos.z())
+//     }
+//     fn get_material(&self) -> Material {
+//         let m_c = self.clone();
+//         m_c.material
+//     }
 
-}
+// }
 
-#[derive(Debug, Clone)]
-pub struct Cone{
-    pub transform: Matrix,
-    pub material: Material,
-    pub min: f64,
-    pub max: f64,
-    pub kind: Shapes,
-    pub closed: bool,
-    pub parent: Option<RefCell<Weak<Group>>>,
-}
-
-impl Cone {
-    pub fn new() -> Cone{
-        Cone{
-            transform: Matrix::zero(4,4).identity(),
-            material: Material::new(),
-            min: f64::NEG_INFINITY,
-            max: f64::INFINITY,
-            kind: Shapes::Cone,
-            closed: false,    
-            parent: None,
-        }
-    }
-
-    pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
-        if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
-            return
-        }
-
-        let t = (self.min - r.origin.y()) / r.direction.y();
-        if self.check_cap(r,t,self.min) { xs.push(t)}
-        let t = (self.max - r.origin.y()) / r.direction.y();
-        if self.check_cap(r,t,self.max) { xs.push(t)}
-
-
-    }
-    pub fn check_cap(&self, r: &Ray, t: f64, y: f64) -> bool {
-        let x = r.origin.x() + t * r.direction.x();
-        let z = r.origin.z() + t * r.direction.z();
-        (x.powi(2) + z.powi(2)) <= y.abs()
-    }
-}
-
-
-impl ShapeThings for Cone{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
-    }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        self.clone().parent
-    }
-    fn get_kind(&self) -> Shapes { Shapes::Cone}
-    fn set_material(&mut self, m: Material){
-        self.material = m;
-    }
-
-    fn set_transform(&mut self,t: Matrix){ 
+// #[derive(Debug, Clone)]
+// pub struct Cone{
+//     pub transform: Matrix,
+//     pub material: Material,
+//     pub min: f64,
+//     pub max: f64,
+//     pub kind: Shapes,
+//     pub closed: bool,
+//     pub parent: RefCell<Weak<Group>>,
     
-        self.transform = t;
+// }
 
-    }
+// impl Cone {
+//     pub fn new() -> Cone{
+//         Cone{
+//             transform: Matrix::zero(4,4).identity(),
+//             material: Material::new(),
+//             min: f64::NEG_INFINITY,
+//             max: f64::INFINITY,
+//             kind: Shapes::Cone,
+//             closed: false,    
+//             parent: RefCell::new(Weak::new()),
+//         }
+//     }
+
+//     pub fn intersect_cap(&self,r:&Ray,xs: &mut Vec<f64>){
+//         if self.closed == false || equal_floats(&r.direction.y(), &0.0_f64){
+//             return
+//         }
+
+//         let t = (self.min - r.origin.y()) / r.direction.y();
+//         if self.check_cap(r,t,self.min) { xs.push(t)}
+//         let t = (self.max - r.origin.y()) / r.direction.y();
+//         if self.check_cap(r,t,self.max) { xs.push(t)}
+
+
+//     }
+//     pub fn check_cap(&self, r: &Ray, t: f64, y: f64) -> bool {
+//         let x = r.origin.x() + t * r.direction.x();
+//         let z = r.origin.z() + t * r.direction.z();
+//         (x.powi(2) + z.powi(2)) <= y.abs()
+//     }
+// }
+
+
+// impl ShapeThings for Cone{
+//         fn set_parent(&mut self, parent: Rc<Group>){
+//         *self.parent.borrow_mut() = Rc::downgrade(&parent)
+//     }
+//     fn get_parent(&mut self) -> &RefCell<Weak<Group>> {
+//         &self.parent
+//     } 
+//     fn has_parent(& self) -> bool{
+//         if self.parent.borrow().upgrade().is_some() { return true}
+//         false 
+//     }    fn get_kind(&self) -> Shapes { Shapes::Cone}
+//     fn set_material(&mut self, m: Material){
+//         self.material = m;
+//     }
+
+//     fn set_transform(&mut self,t: Matrix){ 
     
-    fn intersect(&self,r: &Ray) -> Vec<f64>{
-        let mut xs:Vec<f64> = vec![];
-        let a = r.direction.x().powi(2) - r.direction.y().powi(2) + r.direction.z().powi(2);
-        let b = 2.0 * r.origin.x() * r.direction.x() -
-        2.0 * r.origin.y() * r.direction.y() +
-        2.0 * r.origin.z() * r.direction.z();
-        let c = r.origin.x().powi(2) - r.origin.y().powi(2) + r.origin.z().powi(2);
+//         self.transform = t;
+
+//     }
+    
+//     fn intersect(&self,r: &Ray) -> Vec<f64>{
+//         let mut xs:Vec<f64> = vec![];
+//         let a = r.direction.x().powi(2) - r.direction.y().powi(2) + r.direction.z().powi(2);
+//         let b = 2.0 * r.origin.x() * r.direction.x() -
+//         2.0 * r.origin.y() * r.direction.y() +
+//         2.0 * r.origin.z() * r.direction.z();
+//         let c = r.origin.x().powi(2) - r.origin.y().powi(2) + r.origin.z().powi(2);
         
-        if equal_floats(&0.0_f64,&a) && equal_floats(&0.0_f64,&b) { 
+//         if equal_floats(&0.0_f64,&a) && equal_floats(&0.0_f64,&b) { 
 
-            self.intersect_cap(r,&mut xs);
+//             self.intersect_cap(r,&mut xs);
               
-        } else if equal_floats(&0.0_f64,&a) {
-            let t = -c/(2.0*b);
-            xs.push(t);
-            self.intersect_cap(r,&mut xs);
+//         } else if equal_floats(&0.0_f64,&a) {
+//             let t = -c/(2.0*b);
+//             xs.push(t);
+//             self.intersect_cap(r,&mut xs);
 
-        } else {
+//         } else {
             
 
-            let disc = b.powi(2) - 4.0 * a * c;
+//             let disc = b.powi(2) - 4.0 * a * c;
             
-            if disc < 0.0 { return xs }
+//             if disc < 0.0 { return xs }
             
-            let mut t0 = (-b - disc.sqrt())/(2.0*a);
-            let mut t1 = (-b + disc.sqrt())/(2.0*a);
-            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+//             let mut t0 = (-b - disc.sqrt())/(2.0*a);
+//             let mut t1 = (-b + disc.sqrt())/(2.0*a);
+//             if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
             
-            let y0 = r.origin.y() + t0 * r.direction.y();
-            if self.min < y0 && y0 < self.max {
-                xs.push(t0);
-            }
-            let y1 = r.origin.y() + t1 * r.direction.y();
-            if self.min < y1 && y1 < self.max {
-                xs.push(t1);
-            }
-            self.intersect_cap(r,&mut xs);
-        }
-        xs
+//             let y0 = r.origin.y() + t0 * r.direction.y();
+//             if self.min < y0 && y0 < self.max {
+//                 xs.push(t0);
+//             }
+//             let y1 = r.origin.y() + t1 * r.direction.y();
+//             if self.min < y1 && y1 < self.max {
+//                 xs.push(t1);
+//             }
+//             self.intersect_cap(r,&mut xs);
+//         }
+//         xs
 
-    }
+//     }
 
-    fn this_is(self) -> Box<dyn ShapeThings>
-    {
-        Box::new(self) as Box<dyn ShapeThings>
+//     fn this_is(self) -> Box<dyn ShapeThings>
+//     {
+//         Box::new(self) as Box<dyn ShapeThings>
     
-    }
+//     }
     
-    fn get_transform(&self) -> Matrix {
-        self.clone().transform
-    }
-    fn normal_at(&self, pos: &Element) -> Element{
-        let dist = pos.x().powi(2) + pos.z().powi(2);
-        if dist < 1.0 && pos.y() >= self.max - EPSILON {
-            return vector (0.0,1.0,0.0)
-        } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
-            return vector(0.0,-1.0,0.0)
-        }
-        let mut y = dist.sqrt();
-        if pos.y() > 0.0 { y = -y}
-        vector(pos.x(),y,pos.z())
-    }
-    fn get_material(&self) -> Material {
-        let m_c = self.clone();
-        m_c.material
-    }
+//     fn get_transform(&self) -> Matrix {
+//         self.clone().transform
+//     }
+//     fn normal_at(&self, pos: &Element) -> Element{
+//         let dist = pos.x().powi(2) + pos.z().powi(2);
+//         if dist < 1.0 && pos.y() >= self.max - EPSILON {
+//             return vector (0.0,1.0,0.0)
+//         } else if dist < 1.0 && pos.y() <= self.min + EPSILON {
+//             return vector(0.0,-1.0,0.0)
+//         }
+//         let mut y = dist.sqrt();
+//         if pos.y() > 0.0 { y = -y}
+//         vector(pos.x(),y,pos.z())
+//     }
+//     fn get_material(&self) -> Material {
+//         let m_c = self.clone();
+//         m_c.material
+//     }
 
-}
+// }
 
 
 
@@ -1067,7 +1141,8 @@ pub struct Sphere{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Option<RefCell<Weak<Group>>>,
+    pub parent: RefCell<Weak<RefCell<Group>>>,
+    
 }
 
 impl Sphere{
@@ -1077,7 +1152,7 @@ impl Sphere{
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(), 
             kind: Shapes::Sphere,
-            parent: None,}
+            parent: RefCell::new(Weak::new()),}
     }
 
     pub fn glass() -> Sphere{
@@ -1098,12 +1173,18 @@ impl Sphere{
 }
 
 impl ShapeThings for Sphere{
-    fn set_parent(&mut self, parent: Group){
-        self.parent = Some(RefCell::new(Rc::downgrade(&Rc::new(parent))))
+        fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+        *self.parent.borrow_mut() = Rc::downgrade(parent);
+        //eprintln!("parent {:?}",self.parent.borrow_mut().upgrade())
     }
-    fn get_parent(&self) -> Option<RefCell<Weak<Group>>> {
-        self.clone().parent
-    }
+    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+        let copy = self.clone();
+        copy.parent
+    } 
+    fn has_parent(& self) -> bool{
+        if self.parent.borrow_mut().upgrade().is_some() { return true}
+        false 
+    }    
     fn get_kind(&self) -> Shapes { Shapes::Sphere}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
          //why ref here too?, isnt obj already one?, accessing fields changes this?
@@ -1156,9 +1237,10 @@ impl ShapeThings for Sphere{
         self.material = m;
     }
 
-    fn set_transform(&mut self,t: Matrix){ 
-    
-        self.transform = t;
+    fn set_transform(&self,t: Matrix) -> Box<dyn ShapeThings>{ 
+        let mut copy = self.clone();
+        copy.transform = t;
+        Box::new(copy)
 
     }
     fn this_is(self) -> Box<dyn ShapeThings>
@@ -1362,7 +1444,7 @@ impl World{
         s1.material.specular = 0.2;
 
         let mut s2 = Sphere::new();
-        s2.set_transform(&scale(0.5,0.5,0.5));
+        s2.set_transform(scale(0.5,0.5,0.5));
         World { objects: vec![Box::new(s1) as Box<dyn ShapeThings> ,Box::new(s2) as Box<dyn ShapeThings>] , light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) }
     }
 

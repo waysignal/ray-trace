@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 
 use crate::{Element,Matrix,point};
-use crate::shapes::{Sphere,ShapeThings, A};
+use crate::shapes::{*};
 
 
 // Transformations
