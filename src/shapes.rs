@@ -7,6 +7,7 @@ use crate::rays::{Ray, Intersections,Intersection,hit, intersect_shape};
 use std::rc::Rc;
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
 use std::any::Any;
+use std::ops::Deref;
 
 pub static EPSILON: f64 = 0.00001;
 pub static REMAIN: u8 = 4;
@@ -338,8 +339,8 @@ pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use part
     fn get_kind(&self) -> Shapes;
     
     fn this_is(self) -> Box<dyn ShapeThings>;
-    fn set_parent(&mut self, g: &Rc<RefCell<Group>>);
-    fn get_parent(& self) -> RefCell<Weak<RefCell<Group>>>;
+    fn set_parent(&mut self, g: &Rc<Group>);
+    fn get_parent(& self) -> Weak<Group>;
     fn has_parent(& self) -> bool;
 
 
@@ -401,8 +402,8 @@ pub struct Group{
     pub kind: Shapes,
     pub transform: Matrix,
     pub material: Material,
-    pub parent: RefCell<Weak<RefCell<Group>>>,
-    pub sub_group: RefCell<Vec<Weak<RefCell<Group>>>>,
+    pub parent: RefCell<Weak<Group>>,
+    pub sub_group: RefCell<Vec<Weak<Group>>>,
     pub members: Vec<RefCell<Box<dyn ShapeThings>>>, //one parent per structure -> no multiple owners of child, so removing rc<refcell and just using : unless i need it to go in to update parents
 }
 
@@ -428,12 +429,12 @@ impl Group{
     pub fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>> {
         &self.members //cloned into new memory. this is what is returned, not original? 
     }
-    pub fn add_sub_group(self, g: &Rc<RefCell<Group>>) -> Group{ //use & instead here bc we do not want to take ownership
+    pub fn add_sub_group(self, g: &Rc<Group>) -> Group{ //use & instead here bc we do not want to take ownership
         self.sub_group.borrow_mut().push(Rc::downgrade(g));
         self
     }
 
-    pub fn set_parent_sub_group(&mut self, gp: &Rc<RefCell<Group>>){
+    pub fn set_parent_sub_group(&mut self, gp: &Rc<Group>){
     
         *self.parent.borrow_mut() = Rc::downgrade(gp)
         
@@ -464,7 +465,7 @@ impl Group{
     // }
 }
 
-pub fn update_parent_for_members(g: &Group, g_rc: Rc<RefCell<Group>>) {
+pub fn update_parent_for_members(g: &Group, g_rc: Rc<Group>) {
     //let mut last = g.members.last().unwrap().borrow_mut(); 
     
     //let last = (**last.borrow_mut().last_mut().unwrap()).borrow_mut();
@@ -485,13 +486,15 @@ pub fn update_parent_for_members(g: &Group, g_rc: Rc<RefCell<Group>>) {
 
 
 impl ShapeThings for Group{ 
-    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+    fn set_parent(&mut self, parent: &Rc<Group>){
         *self.parent.borrow_mut() = Rc::downgrade(&parent)
         //self.parent.push(RefCell::new(Rc::downgrade(&parent)));
     }
-    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+    fn get_parent(&self) -> Weak<Group> {
         let copy = self.clone();
-        copy.parent
+        let r = copy.parent.into_inner();
+       
+        r
     } 
     fn has_parent(& self) -> bool{
         if self.parent.borrow_mut().upgrade().is_some() { return true}
@@ -534,16 +537,21 @@ impl ShapeThings for Group{
     }  
 }
 
+// impl Deref for Rc<Group>{
+
+// }
 pub fn world_to_object(s: &mut Box<dyn ShapeThings>, p: &Element) 
     -> Element{
-    let mut point = p;
+    let mut point = p.clone();
     //let mut new_p = p.clone().matrix;
     if s.has_parent(){
-        let mut pp = Rc::try_unwrap(s.get_parent().borrow().upgrade().unwrap()).unwrap().into_inner();
-        let mut pp = Box::new(pp) as Box<dyn ShapeThings>;
-        //point = &world_to_object(s.get_parent().borrow_mut(), p);
+        eprintln!("{:?}", Rc::strong_count(&s.get_parent().upgrade().unwrap()));
+        let tt = Rc::try_unwrap(s.get_parent().upgrade().unwrap()).unwrap(); //
+        
+        let mut pp = Box::new(tt) as Box<dyn ShapeThings>;
+        point = world_to_object(&mut pp, p);
     }
-    Element{ matrix: s.get_transform().invert().unwrap().dot(p.clone().matrix).unwrap()}
+    Element{ matrix: s.get_transform().invert().unwrap().dot(point.clone().matrix).unwrap()}
 }
 
 pub fn take_members_out(g: & Group) -> Vec<Box<dyn ShapeThings>>{
@@ -604,7 +612,7 @@ pub struct Shape{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: RefCell<Weak<RefCell<Group>>>,
+    pub parent: RefCell<Weak<Group>>,
     
      // double option when weak is upgraded (weak is a RC pointer)
     
@@ -634,12 +642,14 @@ impl Shape {
 }
 
 impl ShapeThings for Shape{
-    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+    fn set_parent(&mut self, parent: &Rc<Group>){
         *self.parent.borrow_mut() = Rc::downgrade(parent)
     }
-    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+    fn get_parent(&self) -> Weak<Group> {
         let copy = self.clone();
-        copy.parent
+        let r = copy.parent.into_inner();
+        
+        r
     } 
     fn has_parent(& self) -> bool{
         if self.parent.borrow_mut().upgrade().is_some() { return true}
@@ -1141,7 +1151,7 @@ pub struct Sphere{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: RefCell<Weak<RefCell<Group>>>,
+    pub parent: RefCell<Weak<Group>>,
     
 }
 
@@ -1173,13 +1183,16 @@ impl Sphere{
 }
 
 impl ShapeThings for Sphere{
-        fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
+    fn set_parent(&mut self, parent: &Rc<Group>){
         *self.parent.borrow_mut() = Rc::downgrade(parent);
         //eprintln!("parent {:?}",self.parent.borrow_mut().upgrade())
     }
-    fn get_parent(&self) -> RefCell<Weak<RefCell<Group>>> {
+    fn get_parent(&self) -> Weak<Group> {
         let copy = self.clone();
-        copy.parent
+        let r = copy.parent.into_inner();
+        eprintln!("{:?}",r);
+        
+        r
     } 
     fn has_parent(& self) -> bool{
         if self.parent.borrow_mut().upgrade().is_some() { return true}

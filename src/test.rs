@@ -1426,104 +1426,104 @@ pub mod tests{
 //         }
 //     }
 
-    #[test]
-    pub fn groups_feature_195(){
-        let mut g = Group::new();
-        assert_eq!(Shape::test().transform,g.transform);
-        assert_eq!(0, g.members.len());
+    // #[test]
+    // pub fn groups_feature_195(){
+    //     let mut g = Group::new();
+    //     assert_eq!(Shape::test().transform,g.transform);
+    //     assert_eq!(0, g.members.len());
       
-        assert_eq!(true, Shape::test().parent.into_inner().upgrade().is_none());//.unwrap().upgrade());
+    //     assert_eq!(true, Shape::test().parent.into_inner().upgrade().is_none());//.unwrap().upgrade());
 
-        g.add_child(RefCell::new(Shape::test().this_is())); // *** ALLOWS FOR CHANGE IN MEMBERS FIELD EVEN IF GROUP IS IMMUTABLE?? 
-        assert_ne!(0, g.members.len());
-        let g_rc = Rc::new(RefCell::new(g.clone()));
-        update_parent_for_members(&g,Rc::clone(&g_rc)); //&mut g and & g (with g being mut) are different
-        assert_eq!(g.members,vec![RefCell::new(Shape::test().this_is())]);
-        let mut get_p = g.members[0].borrow().clone(); //clone bc this data lives on heap,
+    //     g.add_child(RefCell::new(Shape::test().this_is())); // *** ALLOWS FOR CHANGE IN MEMBERS FIELD EVEN IF GROUP IS IMMUTABLE?? 
+    //     assert_ne!(0, g.members.len());
+    //     let g_rc = Rc::new(RefCell::new(g.clone()));
+    //     update_parent_for_members(&g,Rc::clone(&g_rc)); //&mut g and & g (with g being mut) are different
+    //     assert_eq!(g.members,vec![RefCell::new(Shape::test().this_is())]);
+    //     let mut get_p = g.members[0].borrow().clone(); //clone bc this data lives on heap,
         
-        let mut get_p = get_p.get_parent().clone().into_inner(); //clone here as well bc (get_parent derefs somehow?)
-        let parent = g_rc;
-        assert_eq!(parent, get_p.upgrade().unwrap())
+    //     let mut get_p = get_p.get_parent(); //clone here as well bc (get_parent derefs somehow?)
+    //     let parent = g_rc;
+    //     assert_eq!(parent, Rc::new(RefCell::new(get_p)))
    
-        // design decision: using option for parent: only one parent allowed, bc having vec! for parents is difficult when accessing the inner values, (have to move out of index
-        // but the data structure does not implement copy trait)
+    //     // design decision: using option for parent: only one parent allowed, bc having vec! for parents is difficult when accessing the inner values, (have to move out of index
+    //     // but the data structure does not implement copy trait)
 
-    }
+    // }
 
 
-    #[test]
-    pub fn groups_feature_196(){
-        let mut g = Group::new();
-        let r = Ray::new(   point(0.0,0.0,0.0),
-                                vector(0.0,0.0,0.0));
-        //let xs = g.intersect(&r);
-        //assert_eq!(0,xs.len());
+    // #[test]
+    // pub fn groups_feature_196(){
+    //     let mut g = Group::new();
+    //     let r = Ray::new(   point(0.0,0.0,0.0),
+    //                             vector(0.0,0.0,0.0));
+    //     //let xs = g.intersect(&r);
+    //     //assert_eq!(0,xs.len());
 
-        let s1 = Sphere::new();
-        let s1_c_b = s1.clone().this_is();
-        let s2 = Sphere::new();
-        let s2 = s2.set_transform(translation(0.0,0.0,-3.0));
+    //     let s1 = Sphere::new();
+    //     let s1_c_b = s1.clone().this_is();
+    //     let s2 = Sphere::new();
+    //     let s2 = s2.set_transform(translation(0.0,0.0,-3.0));
        
 
-        let s3 = Sphere::new();
-        let s3 = s3.set_transform(translation(5.0,0.0,0.0));
+    //     let s3 = Sphere::new();
+    //     let s3 = s3.set_transform(translation(5.0,0.0,0.0));
         
         
-        g.add_child(RefCell::new(s1.this_is()));
-        g.add_child(RefCell::new(s2.clone()));
-        g.add_child(RefCell::new(s3));
+    //     g.add_child(RefCell::new(s1.this_is()));
+    //     g.add_child(RefCell::new(s2.clone()));
+    //     g.add_child(RefCell::new(s3));
        
-        let g_rc = Rc::new(RefCell::new(g.clone()));
-        //eprintln!("{:?}",g_rc);
-        update_parent_for_members(&g,Rc::clone(&g_rc));
-        let g = Rc::try_unwrap(g_rc).unwrap();
+    //     let g_rc = Rc::new(RefCell::new(g.clone()));
+    //     //eprintln!("{:?}",g_rc);
+    //     update_parent_for_members(&g,Rc::clone(&g_rc));
+    //     let g = Rc::try_unwrap(g_rc).unwrap();
         
-        let r = Ray::new(   point(0.0,0.0,-5.0),
-                                vector(0.0,0.0,1.0));
-        let list = take_members_out(&g.into_inner());
+    //     let r = Ray::new(   point(0.0,0.0,-5.0),
+    //                             vector(0.0,0.0,1.0));
+    //     let list = take_members_out(&g.into_inner());
         
-        let results = intersect(&list,&r,vec![]);
+    //     let results = intersect(&list,&r,vec![]);
     
-        assert_eq!(4,results.count);
-        assert_eq!(&s2,results.h[0].o);
-        assert_eq!(&s2,results.h[1].o);
-        assert_eq!(&s1_c_b,results.h[2].o);
-        assert_eq!(&s1_c_b,results.h[3].o);
-        // issues in the beginning with intersections due to calling the local transform and not intersect_shape (where ray is transformed)
-        // note: update_parent_.. adds a Rc to a CLONED parent, therefore the parent(in the field) does not have the member's parent updated
-        // so in members -> parent [field] = parent[with members with parents:none], but the overall parent does have the individual members within the member field
-        // ran into the mutable borrow constraint with refcell, checked at compile time? or is it run time -> the later one
-        // issues with lifetimes not being consistent when using references -> tried references bc did not want to take ownership 
-        // vec![refcell] had to create a helper function to convert to just vec![] -> question now is why am i using refcell -> edit: hmm probably could use just vec!
-    }
+    //     assert_eq!(4,results.count);
+    //     assert_eq!(&s2,results.h[0].o);
+    //     assert_eq!(&s2,results.h[1].o);
+    //     assert_eq!(&s1_c_b,results.h[2].o);
+    //     assert_eq!(&s1_c_b,results.h[3].o);
+    //     // issues in the beginning with intersections due to calling the local transform and not intersect_shape (where ray is transformed)
+    //     // note: update_parent_.. adds a Rc to a CLONED parent, therefore the parent(in the field) does not have the member's parent updated
+    //     // so in members -> parent [field] = parent[with members with parents:none], but the overall parent does have the individual members within the member field
+    //     // ran into the mutable borrow constraint with refcell, checked at compile time? or is it run time -> the later one
+    //     // issues with lifetimes not being consistent when using references -> tried references bc did not want to take ownership 
+    //     // vec![refcell] had to create a helper function to convert to just vec![] -> question now is why am i using refcell -> edit: hmm probably could use just vec!
+    // }
 
 
-    #[test]
-    pub fn groups_feature_197(){
-        let mut g = Group::new();
+    // #[test]
+    // pub fn groups_feature_197(){
+    //     let mut g = Group::new();
     
-        let mut g = g.set_transform_group(scale(2.0,2.0,2.0));
+    //     let mut g = g.set_transform_group(scale(2.0,2.0,2.0));
 
-        let s1 = Sphere::new();
-        let s1_b = s1.set_transform(translation(5.0,0.0,0.0));
+    //     let s1 = Sphere::new();
+    //     let s1_b = s1.set_transform(translation(5.0,0.0,0.0));
         
-        g.add_child(RefCell::new(s1_b));
-        let g_rc = Rc::new(RefCell::new(g.clone()));
-        update_parent_for_members(&g,Rc::clone(&g_rc));
+    //     g.add_child(RefCell::new(s1_b));
+    //     let g_rc = Rc::new(RefCell::new(g.clone()));
+    //     update_parent_for_members(&g,Rc::clone(&g_rc));
 
-        //let g = Rc::try_unwrap(g_rc).unwrap(); //edit: no bc g_rc points to a clone of g; the members of g are updated to have parent of a CLONE of g
+    //     //let g = Rc::try_unwrap(g_rc).unwrap(); //edit: no bc g_rc points to a clone of g; the members of g are updated to have parent of a CLONE of g
         
-        let r = Ray::new(   point(10.0,0.0,-10.0),
-                                vector(0.0,0.0,1.0));
-        let list = take_members_out(&g);
+    //     let r = Ray::new(   point(10.0,0.0,-10.0),
+    //                             vector(0.0,0.0,1.0));
+    //     let list = take_members_out(&g);
 
-        let results = intersect(&list,&r,vec![]);
+    //     let results = intersect(&list,&r,vec![]);
      
     
-        assert_eq!(2,results.count);
-        //adding helper function to apply group's tranform to ray before the object's transform -> edit: implemented the transform in the TAKING OUT helper function
+    //     assert_eq!(2,results.count);
+    //     //adding helper function to apply group's tranform to ray before the object's transform -> edit: implemented the transform in the TAKING OUT helper function
 
-    }
+    // }
 
     #[test]
     pub fn shapes_feature_198(){
@@ -1535,12 +1535,12 @@ pub mod tests{
         // thoughts: all i really need is the transform matrix, dont really care for other fields
 
         ///adding g2 to g1
-        let g1_rc = Rc::new(RefCell::new(g1));
+        let g1_rc = Rc::new(g1);
         g2.set_parent_sub_group(&g1_rc);
-        let g2_rc = Rc::new(RefCell::new(g2));                            /// g2_rc
+        let g2_rc = Rc::new(g2);                            /// g2_rc
         eprintln!("{:?}",Rc::strong_count(&g1_rc));
         let mut g1 = Rc::try_unwrap(g1_rc).unwrap();
-        let g1 = g1.into_inner().add_sub_group(&g2_rc);                      /// weak g2_rc used
+        let g1 = g1.add_sub_group(&g2_rc);                      /// weak g2_rc used
         
         
         eprintln!("{:?}",Rc::strong_count(&g2_rc));
@@ -1551,16 +1551,17 @@ pub mod tests{
         s.set_parent(&g2_rc);
         //eprintln!("{:?}",(s.get_parent().borrow_mut().upgrade()));
         //let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
-        g2_rc.borrow_mut().add_child(RefCell::new(s));
+        let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
+        g2.add_child(RefCell::new(s));
        
  
-        eprintln!("g1 parent {:?}",g1.parent.borrow_mut().upgrade().is_some() );
+        eprintln!("g1 parent {:?}",g2.members);
         
         // let test = Rc::new(Sphere::new());
         // let new  = Rc::downgrade(&test);
         //eprintln!("{:?}",g2.members[0].borrow_mut().get_parent().borrow().upgrade());
-        let test = g2_rc.borrow_mut();
-        let test2 = &mut *test.get_members()[0].borrow_mut();
+        let test = g2;
+        let test2 = &mut test.get_members()[0].borrow_mut();
         let p = world_to_object(test2,&point(-2.0,0.0,-10.0));
         assert_eq!(point(0.0,0.0,-1.0),p);
 
