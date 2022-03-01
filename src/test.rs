@@ -1535,32 +1535,31 @@ pub mod tests{
         // thoughts: all i really need is the transform matrix, dont really care for other fields
 
         ///adding g2 to g1
-        let g1_rc = Rc::new(g1);
+        let g1_rc = Rc::new(RefCell::new(g1));
         g2.set_parent_sub_group(&g1_rc);
-        let g2_rc = Rc::new(g2);                            /// g2_rc
+        let mut g2_rc = Rc::new(RefCell::new(g2));                            /// g2_rc
         eprintln!("{:?}",Rc::strong_count(&g1_rc));
-        let mut g1 = Rc::try_unwrap(g1_rc).unwrap();
-        let g1 = g1.add_sub_group(&g2_rc);                      /// weak g2_rc used
+        //let mut g1 = Rc::try_unwrap(g1_rc).unwrap();
+        //let g1 = g1.borrow_mut().add_sub_group(&g2_rc);                      /// weak g2_rc used
         
-        
-        eprintln!("{:?}",Rc::strong_count(&g2_rc));
+        //eprintln!("{:?}",g2_rc.borrow().get_parent().upgrade().unwrap());
         //let mut g2 = Rc::try_unwrap(g2_rc).unwrap(); // note: this unwrap removes the sub group rc
-        eprintln!("g1 sub {:?}",g1.sub_group.borrow()[0].upgrade());
+        //eprintln!("g1 sub {:?}",g1.sub_group.borrow()[0].upgrade());
 
         //let g2_rc = Rc::new(g2); 
         s.set_parent(&g2_rc);
         //eprintln!("{:?}",(s.get_parent().borrow_mut().upgrade()));
         //let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
-        let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
-        g2.add_child(RefCell::new(s));
+        //let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
+        add_child(&mut g2_rc,RefCell::new(s));
        
  
-        eprintln!("g1 parent {:?}",g2.members);
+        eprintln!("g1 parent {:?}",g2_rc.borrow_mut().get_members()[0].borrow_mut().get_parent().upgrade().unwrap());
         
-        // let test = Rc::new(Sphere::new());
-        // let new  = Rc::downgrade(&test);
-        //eprintln!("{:?}",g2.members[0].borrow_mut().get_parent().borrow().upgrade());
-        let test = g2;
+        let test = Rc::new(Sphere::new());
+        let new  = Rc::downgrade(&test);
+        eprintln!("{:?}",g2_rc.borrow_mut().get_members()[0].borrow_mut().get_parent().borrow().upgrade());
+        let test = g2_rc.borrow_mut();
         let test2 = &mut test.get_members()[0].borrow_mut();
         let p = world_to_object(test2,&point(-2.0,0.0,-10.0));
         assert_eq!(point(0.0,0.0,-1.0),p);
