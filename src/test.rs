@@ -1535,9 +1535,9 @@ pub mod tests{
         // thoughts: all i really need is the transform matrix, dont really care for other fields
 
         ///adding g2 to g1
-        let g1_rc = Rc::new(RefCell::new(g1));
-        g2.set_parent_sub_group(&g1_rc);
-        let mut g2_rc = Rc::new(RefCell::new(g2));                            /// g2_rc
+        let g1_rc = Rc::new(RefCell::new(g1.this_is()));
+        //g2.set_parent_sub_group(&g1_rc);
+        let mut g2_rc = Rc::new(RefCell::new(g2.this_is()));                            /// g2_rc
         eprintln!("{:?}",Rc::strong_count(&g1_rc));
         //let mut g1 = Rc::try_unwrap(g1_rc).unwrap();
         //let g1 = g1.borrow_mut().add_sub_group(&g2_rc);                      /// weak g2_rc used
@@ -1547,22 +1547,31 @@ pub mod tests{
         //eprintln!("g1 sub {:?}",g1.sub_group.borrow()[0].upgrade());
 
         //let g2_rc = Rc::new(g2); 
-        s.set_parent(&g2_rc);
+       // s.set_parent(&g2_rc);
+        let s = RefCell::new(s);
+        add_child(&mut g2_rc,&s); //g2 <=> s
+        
+        g2_rc.borrow_mut().set_parent(&g1_rc);
+        eprintln!("g1 parent {:?}",g1_rc);
+        g1_rc.borrow_mut().set_sub_group(&g2_rc); //g1 <=> g2
+        eprintln!("g1 AFTER SUBGROUP {:?}",g1_rc);
+        eprintln!("g2 parent {:?}",g2_rc);
+
         //eprintln!("{:?}",(s.get_parent().borrow_mut().upgrade()));
         //let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
         //let mut g2 = Rc::try_unwrap(g2_rc).unwrap();
-        add_child(&mut g2_rc,RefCell::new(s));
+        
        
  
-        eprintln!("g1 parent {:?}",g2_rc.borrow_mut().get_members()[0].borrow_mut().get_parent().upgrade().unwrap());
         
-        let test = Rc::new(Sphere::new());
-        let new  = Rc::downgrade(&test);
-        eprintln!("{:?}",g2_rc.borrow_mut().get_members()[0].borrow_mut().get_parent().borrow().upgrade());
-        let test = g2_rc.borrow_mut();
-        let test2 = &mut test.get_members()[0].borrow_mut();
-        let p = world_to_object(test2,&point(-2.0,0.0,-10.0));
-        assert_eq!(point(0.0,0.0,-1.0),p);
+        
+        // let test = Rc::new(Sphere::new());
+        // let new  = Rc::downgrade(&test);
+        // eprintln!("{:?}",g2_rc.borrow_mut().get_members()[0].borrow_mut().get_parent().borrow().upgrade());
+        // let test = g2_rc.borrow_mut();
+        // let test2 = &mut test.get_members()[0].borrow_mut();
+        let p = world_to_object(&s,&point(-2.0,0.0,-10.0));
+        assert!(p.matrix.equal(point(0.0,0.0,-1.0).matrix));
 
 
 

@@ -391,12 +391,16 @@ pub trait  ShapeThings: CloneFoo + Any + std::fmt::Debug  { //we cannot use part
     fn get_kind(&self) -> Shapes;
     
     fn this_is(self) -> Box<dyn ShapeThings>;
-    fn set_parent(&mut self, g: &Rc<RefCell<Group>>);
-    fn get_parent(& self) -> Parent;
+    fn set_parent(&mut self, g: &Rc<RefCell<Box<dyn ShapeThings>>>);
+    fn get_parent(& self) -> &Weak<RefCell<Box<dyn ShapeThings>>>;
     //fn get_parent_box(& self) -> Box<dyn ShapeThings>;
     fn has_parent(& self) -> bool;
 
-    fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>>;
+    fn get_members(&self) -> &RefCell<Vec<RefCell<Box<dyn ShapeThings>>>>;
+    fn get_sub_group(& self) -> &Rc<RefCell<Box<dyn ShapeThings>>>;
+    fn set_sub_group(&mut self, s_g: &Rc<RefCell<Box<dyn ShapeThings>>>) ;
+    
+    fn has_sub_group(& self) -> bool;
 
 
 }
@@ -410,9 +414,10 @@ pub struct Group{
     pub kind: Shapes,
     pub transform: Matrix,
     pub material: Material,
-    pub parent: Parent,
-    pub sub_group: RefCell<Vec<Weak<RefCell<Group>>>>,
-    pub members: Vec<RefCell<Box<dyn ShapeThings>>>, //one parent per structure -> no multiple owners of child, so removing rc<refcell and just using : unless i need it to go in to update parents
+    pub parent: Option<Weak<RefCell<Box<dyn ShapeThings>>>>,
+    pub sub_group: Option<Rc<RefCell<Box<dyn ShapeThings>>>>,
+    pub members: RefCell<Vec<RefCell<Box<dyn ShapeThings>>>>, //one parent per structure -> no multiple owners of child, so removing rc<refcell and just using : unless i need it to go in to update parents
+    pub group_transform: Matrix,
 }
 
 impl PartialEq for Group{
@@ -429,16 +434,14 @@ impl Group{
                 kind: Shapes::Group,
                 transform: Matrix::zero(4,4).identity(),
                 material: Material::new(),
-                parent: Parent{parent_is: Weak::new()},
-                sub_group: RefCell::new(vec![]),
-                members: vec![], }
+                parent: None,
+                sub_group: None,
+                members: RefCell::new(vec![]),
+                group_transform: Matrix::zero(4,4).identity(), }
     }
     
 
-    // pub fn add_sub_group(self, g: &Rc<RefCell<Group>>) -> Group{ //use & instead here bc we do not want to take ownership
-    //     self.sub_group.borrow_mut().push(Rc::downgrade(g));
-    //     self
-    // }
+
 
     // pub fn set_parent_sub_group(&mut self, gp: &Rc<RefCell<Group>>){
     
@@ -461,8 +464,14 @@ impl Group{
     //     r.transform(&self.get_transform().invert().unwrap())
     // }
 }
-
-pub fn add_child(g: &mut Rc<RefCell<Group>>, shape: RefCell<Box<dyn ShapeThings>>){
+// pub fn add_sub_group(g_top: &mut Rc<RefCell<Box<dyn ShapeThings>>>, g: &Rc<RefCell<Box<dyn ShapeThings>>>) { //use & instead here bc we do not want to take ownership
+//     //g_top.borrow_mut().sub_group = Some(g.clone());
+//     g.borrow_mut().set_parent(g_top);
+//     let owner = &**g.borrow_mut();
+//     owner.get_sub_group().borrow_mut() = Some(g.clone())
+    
+// }
+pub fn add_child(g: &mut Rc<RefCell<Box<dyn ShapeThings>>>, shape: &RefCell<Box<dyn ShapeThings>>){
     // thought about moving the update_parent function here bc it would be "easier" to just update the fields when new members are coming in, but ran
     // into issue of constructing a new Rc for the group, "what does this do to the count?"
     // let g_rc = Rc::new(*self);
@@ -472,7 +481,7 @@ pub fn add_child(g: &mut Rc<RefCell<Group>>, shape: RefCell<Box<dyn ShapeThings>
 
     let owner = &**g;
     let mut owner = owner.borrow_mut();
-    owner.members.push(shape);
+    owner.get_members().borrow_mut().push(shape.clone());
     
 }
 
@@ -501,15 +510,18 @@ impl ShapeThings for Group{
     //     let c = self.parent.upgrade().unwrap().borrow_mut().into_inner();
     //     Box::new(c) as Box<dyn ShapeThings>
     // }
-    fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>> {
+    fn get_members(&self) -> &RefCell<Vec<RefCell<Box<dyn ShapeThings>>>> {
         &self.members //cloned into new memory. this is what is returned, not original? 
     }
-    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
-        self.parent = Parent{parent_is: Rc::downgrade(&parent)}
+    fn set_parent(&mut self, parent: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().parent = Some(Rc::downgrade(&parent.clone()));
         //self.parent.push(RefCell::new(Rc::downgrade(&parent)));
     }
-    fn get_parent(&self) -> Parent {
-       self.parent
+    fn get_parent(& self) -> &Weak<RefCell<Box<dyn ShapeThings>>> {
+        let x = &self.borrow().parent;
+        x.as_ref().unwrap()
+
+       
         
         // let copy = self.clone();
         // let r = copy.parent.into_inner();
@@ -517,11 +529,22 @@ impl ShapeThings for Group{
         // r
     } 
     fn has_parent(& self) -> bool{
-        if self.parent.parent_is.upgrade().is_some() { return true}
+        if self.parent.is_some() { return true}
         false 
     }
 
-    
+    fn has_sub_group(& self) -> bool{
+        if self.sub_group.is_some() { return true}
+        false 
+    }
+    fn get_sub_group(&self) -> &Rc<RefCell<Box<dyn ShapeThings>>> {
+        let x = &self.borrow().sub_group;
+        x.as_ref().unwrap()
+
+    } 
+    fn set_sub_group(&mut self, s_g: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().sub_group = Some(s_g.clone());
+    }
     fn get_kind(&self) -> Shapes { Shapes::Group}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
 
@@ -560,11 +583,11 @@ impl ShapeThings for Group{
 // impl Deref for Rc<Group>{
 
 // }
-pub fn world_to_object(s: &mut Box<dyn ShapeThings>, p: &Element) 
+pub fn world_to_object(s: &RefCell<Box<dyn ShapeThings>>, p: &Element) 
     -> Element{
-    let mut point = p.clone();
+    let mut p = p.clone();
     //let mut new_p = p.clone().matrix;
-    if s.has_parent(){
+    if s.borrow().has_parent(){
         //eprintln!("{:?}", Rc::strong_count(&s.get_parent().upgrade().unwrap()));
         //let tt = Rc::try_unwrap(s.get_parent().upgrade().unwrap()).unwrap().into_inner(); //
         //let tt = s.get_parent_box();
@@ -573,15 +596,27 @@ pub fn world_to_object(s: &mut Box<dyn ShapeThings>, p: &Element)
         // let get_parent = (&*parent_in_struct).as_ref()).borrow_mut();
         // let mut pp = Box::new(get_parent) as Box<dyn ShapeThings>;
         // point = world_to_object(&mut pp, p);
+        
+        p = world_to_object(&s.borrow().get_parent().upgrade().unwrap(), &p);
+        eprintln!(" parent");
     }
-    Element{ matrix: s.get_transform().invert().unwrap().dot(point.clone().matrix).unwrap()}
+    // else if s.borrow().has_sub_group(){
+       
+    //     let point = world_to_object(s.borrow().get_sub_group(), &p);
+    //     eprintln!(" sub");
+    // }
+    eprintln!("transform inverse {:?}",s.borrow().get_transform().invert().unwrap());
+    eprintln!("p clone {:?}",p.clone().matrix);
+    let result = Element{ matrix: s.borrow().get_transform().invert().unwrap().dot(p.clone().matrix).unwrap()};
+    eprintln!("result {:?}",result);
+    result
     }
 
 pub fn take_members_out(g: & Group) -> Vec<Box<dyn ShapeThings>>{
 
     let mut list = vec![];
     //let g = g.members;
-    for (_i,e) in g.members.iter().enumerate(){
+    for (_i,e) in g.members.borrow().iter().enumerate(){
         let e = e.clone();
         let j = e.into_inner();
         let matrix = g.get_transform().dot(j.get_transform()).unwrap();
@@ -635,8 +670,10 @@ pub struct Shape{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Parent,
-    pub members: Vec<RefCell<Box<dyn ShapeThings>>>,
+    pub parent: Option<Weak<RefCell<Box<dyn ShapeThings>>>>,
+    pub members: RefCell<Vec<RefCell<Box<dyn ShapeThings>>>>,
+    pub group_transform: Matrix,
+    pub sub_group: Option<Rc<RefCell<Box<dyn ShapeThings>>>>,
     
      // double option when weak is upgraded (weak is a RC pointer)
     
@@ -659,8 +696,10 @@ impl Shape {
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(),
             kind: Shapes::Shape,
-            parent: Parent{parent_is:Weak::new()},
-            members: vec![]
+            parent: None,
+            members: RefCell::new(vec![]),
+            group_transform: Matrix::zero(4,4).identity(),
+            sub_group: None,
             
         }
     }
@@ -671,15 +710,15 @@ impl ShapeThings for Shape{
     //     let c = self.parent.upgrade().unwrap().borrow_mut().into_inner();
     //     Box::new(c) as Box<dyn ShapeThings>
     // }
-    fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>> {
+    fn get_members(&self) -> &RefCell<Vec<RefCell<Box<dyn ShapeThings>>>> {
         &self.members //cloned into new memory. this is what is returned, not original? 
     }
-    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
-        self.parent = Parent{parent_is: Rc::downgrade(&parent)}
+    fn set_parent(&mut self, parent: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().parent = Some(Rc::downgrade(&parent.clone()))
         //self.parent.push(RefCell::new(Rc::downgrade(&parent)));
     }
-    fn get_parent(&self) -> Parent {
-       self.parent
+    fn get_parent(&self) -> &Weak<RefCell<Box<dyn ShapeThings>>> {
+        &self.borrow().parent.as_ref().unwrap()
         
         // let copy = self.clone();
         // let r = copy.parent.into_inner();
@@ -687,7 +726,20 @@ impl ShapeThings for Shape{
         // r
     } 
     fn has_parent(& self) -> bool{
-        if self.parent.parent_is.upgrade().is_some() { return true}
+        if self.parent.is_some() { return true}
+        false 
+    }
+    fn get_sub_group(&self) -> &Rc<RefCell<Box<dyn ShapeThings>>> {
+        let x = &self.borrow().sub_group;
+        x.as_ref().unwrap()
+
+    } 
+    fn set_sub_group(&mut self, s_g: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().sub_group = Some(s_g.clone());
+    }
+    
+    fn has_sub_group(& self) -> bool{
+        if self.sub_group.is_some() { return true}
         false 
     }
     fn get_kind(&self) -> Shapes { Shapes::Shape}
@@ -1185,9 +1237,10 @@ pub struct Sphere{
     pub transform: Matrix,
     pub material: Material,
     pub kind: Shapes,
-    pub parent: Parent,
-    pub members: Vec<RefCell<Box<dyn ShapeThings>>>,
-    
+    pub parent: Option<Weak<RefCell<Box<dyn ShapeThings>>>>,
+    pub members: RefCell<Vec<RefCell<Box<dyn ShapeThings>>>>,
+    pub group_transform: Matrix,
+    pub sub_group: Option<Rc<RefCell<Box<dyn ShapeThings>>>>,
 }
 
 impl Sphere{
@@ -1197,8 +1250,10 @@ impl Sphere{
             transform: Matrix::zero(4,4).identity(),
             material: Material::new(), 
             kind: Shapes::Sphere,
-            parent: Parent{parent_is: Weak::new()},
-            members: vec![]}
+            parent: None,
+            members: RefCell::new(vec![]),
+            group_transform: Matrix::zero(4,4).identity(),
+            sub_group: None }
     }
 
     pub fn glass() -> Sphere{
@@ -1223,23 +1278,36 @@ impl ShapeThings for Sphere{
     //     let c = self.parent.upgrade().unwrap().borrow_mut().into_inner();
     //     Box::new(c) as Box<dyn ShapeThings>
     // }
-    fn get_members(&self) -> &Vec<RefCell<Box<dyn ShapeThings>>> {
+    fn get_members(&self) -> &RefCell<Vec<RefCell<Box<dyn ShapeThings>>>> {
         &self.members //cloned into new memory. this is what is returned, not original? 
     }
-    fn set_parent(&mut self, parent: &Rc<RefCell<Group>>){
-        self.parent = Parent{parent_is: Rc::downgrade(&parent)}
+    fn set_parent(&mut self, parent: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().parent = Some(Rc::downgrade(&parent.clone()))
         //self.parent.push(RefCell::new(Rc::downgrade(&parent)));
     }
-    fn get_parent(&self) -> Parent {
-       self.parent
+    fn get_parent(&self) -> &Weak<RefCell<Box<dyn ShapeThings>>> {
+        &self.borrow().parent.as_ref().unwrap()
         
         // let copy = self.clone();
         // let r = copy.parent.into_inner();
        
         // r
     } 
+    fn get_sub_group(& self) -> &Rc<RefCell<Box<dyn ShapeThings>>> {
+        let x = &self.borrow().sub_group;
+        x.as_ref().unwrap()
+
+    } 
+    fn set_sub_group(&mut self, s_g: &Rc<RefCell<Box<dyn ShapeThings>>>){
+        self.borrow_mut().sub_group = Some(s_g.clone());
+    }
     fn has_parent(& self) -> bool{
-        if self.parent.parent_is.upgrade().is_some() { return true}
+        if self.parent.is_some() { return true}
+        false 
+    }
+    
+    fn has_sub_group(& self) -> bool{
+        if self.sub_group.is_some() { return true}
         false 
     }
     fn get_kind(&self) -> Shapes { Shapes::Sphere}
