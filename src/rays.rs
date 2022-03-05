@@ -5,7 +5,8 @@ use std::collections::HashMap;
 
 use crate::{Element,Matrix,point};
 use crate::shapes::{*};
-
+use core::cell::RefCell;
+use std::rc::Rc;
 
 // Transformations
 // pub fn transform(r: &Ray, f: fn(f64,f64,f64) -> Matrix, ) -> Ray {
@@ -18,7 +19,7 @@ use crate::shapes::{*};
 
 
 
-pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
+pub fn hit(t: & mut Intersections) -> Option<&Intersection>{
     //finds the closest non negative number
     //intersections is a vec of intersection {t,o}
     let mut curr = HashMap::new();
@@ -98,16 +99,102 @@ pub fn hit<'a>(t: &'a mut Intersections) -> Option<&'a Intersection<'a>>{
 //             }
 //         }
     
-pub fn intersect_shape<'a>(r: &Ray, obj: &'a Box<dyn ShapeThings>) -> Intersections<'a>{
+pub fn intersect_shape(r: & Ray, obj: Box<dyn ShapeThings>) -> Intersections{
     
     let local_ray = r.transform(&obj.get_transform().invert().unwrap());
-   
-    let xs = obj.intersect(&local_ray); //use lifetime bc using reference to get around the cannot return something owned by the function constraint
-    obj.make(xs) 
+    
+    //let parent = &**g;
+    let parent_members = obj.get_members().clone();
+
+    
+    if obj.get_kind() == Shapes::Group && obj.intersect(r).is_empty(){
+        return Intersections::empty();
+    }
+    else if obj.get_kind() == Shapes::Group {
+        let obj = obj.clone();
+        let members = take_members_out(&Rc::new(RefCell::new(obj)));
+        let mut results = Intersections::empty();
+        
+        for (_i,e) in members.iter().enumerate(){
+            //let e = e.clone();
+            // let e = e.clone();
+            
+            // let mut j = e.into_inner();
+            // let matrix = obj.get_transform().dot(j.get_transform()).unwrap();
+            // j.set_transform(matrix);
+            let x = e.clone();
+            let xs = e.intersect(&local_ray);
+            let is = make(Rc::new(x),xs);
+            //list.push(j);
+            results = results.adder(is);
+        }
+        return results;
+        
+        //return list
+        
+        
+    }
+    //eprintln!("taking33 {:?}",results);
+    let xs = obj.intersect(&local_ray);
+    make(Rc::new(obj),xs)
+
     
 }
+// pub fn intersect_shape_group<'a>(r: &'a Ray, obj: &'a Box<dyn ShapeThings>, members: Vec<Box<dyn ShapeThings>>,mut list: Vec<Intersections>) -> Intersections<'a>{
+    
+//     let local_ray = r.transform(&obj.get_transform().invert().unwrap());
+    
+//     //let parent = &**g;
+//     //let parent_members = obj.get_members().clone();
 
+    
+//     if obj.get_kind() == Shapes::Group && obj.intersect(r).is_empty(){
+//         return Intersections::empty();
+//     }
+//     else if obj.get_kind() == Shapes::Group {
+//         let obj = obj.clone();
+//         let mut results = Intersections::empty();
+        
+//         for (_i,e) in members.iter().enumerate(){
+//             //let e = e.clone();
+//             // let e = e.clone();
+            
+//             // let mut j = e.into_inner();
+//             // let matrix = obj.get_transform().dot(j.get_transform()).unwrap();
+//             // j.set_transform(matrix);
+            
+//             let xs = e.intersect(&local_ray);
+//             let is = e.make(xs);
+//             //list.push(j);
+//             list.push(is);
+//         }
+//         return results;
+        
+//         //return list
+        
+        
+//     }
+//     //eprintln!("taking33 {:?}",results);
+//     let xs = obj.intersect(&local_ray);
+//     obj.make(xs)
 
+    
+// }
+// let list =  take_members_out_2(obj,r, vec![]);
+//         for (_i, e) in list.iter().enumerate(){
+//             //let e = e.clone();
+//             let xs = e.intersect(&local_ray);
+//             let mut it = vec![];
+//             for i in xs{
+//                 it.push(Intersection{t: i, o: e});
+//             }
+//             let rr = Intersections::new(it);
+
+//             //let r = e.make(xs);
+//             results = results.adder(rr);
+//             eprintln!("results");
+//         }
+//         //return results;v
 
 #[derive(Debug, Clone)]
 pub struct Ray {
@@ -119,9 +206,9 @@ pub struct Ray {
 
 //pub fn intersection(t:Vec<<f64>>, obj: Element);
 #[derive(Debug,Clone)]
-pub struct Intersection<'a> {
+pub struct Intersection {
     pub t : f64,
-    pub o : &'a Box<dyn ShapeThings>, //box bc nothing holds traits
+    pub o : Rc<Box<dyn ShapeThings>>, //box bc nothing holds traits
  
 
 }
@@ -129,9 +216,10 @@ pub struct Intersection<'a> {
 
 
 
-impl<'a>PartialEq for Intersection<'a> {
+impl PartialEq for Intersection {
     fn eq(&self, other: &Self) -> bool {
         self.t == other.t && self.o.get_transform() == other.o.get_transform() && self.o.get_material() == other.o.get_material()
+        && self.o.get_kind() == other.o.get_kind() 
        
     }
     // the object should be the same when this is called anyways, only t would matter (assuming here), if not
@@ -140,9 +228,9 @@ impl<'a>PartialEq for Intersection<'a> {
     // not the shape is the same
 }
 
-impl<'a> Intersection<'a> {
+impl Intersection {
     //pub fn new(t: f64,o: &'a Box<dyn ShapeThings>) -> Intersection<'a>{
-    pub fn new(t: f64, o : &'a Box<dyn ShapeThings>) -> Intersection<'a>{
+    pub fn new(t: f64, o : Rc<Box<dyn ShapeThings>>) -> Intersection{
         Intersection{
             t: t,
             o: o,
@@ -151,13 +239,13 @@ impl<'a> Intersection<'a> {
     }
 }
 #[derive( Debug,Clone)]
-pub struct Intersections<'a>{
+pub struct Intersections{
     pub count: u8,
-    pub h: Vec<Intersection<'a>>,
+    pub h: Vec<Intersection>,
 
 }
 
-impl<'a> Intersections<'a>{
+impl Intersections{
     pub fn new(i: Vec<Intersection>) -> Intersections{
         Intersections {
             count: i.len() as u8,
@@ -165,11 +253,12 @@ impl<'a> Intersections<'a>{
 
         }
     }
-    pub fn empty() -> Intersections<'a>{
+    pub fn empty() -> Intersections{
         Intersections { count: 0, h: vec![] }
     }
-    pub fn adder(mut self,mut other: Intersections<'a>) -> Intersections<'a>{
+    pub fn adder(mut self,mut other: Intersections) -> Intersections{
         self.h.append(&mut other.h);
+        
         Intersections { count: self.count + other.count, h: self.h }
     }
 }

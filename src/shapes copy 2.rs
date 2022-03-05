@@ -4,13 +4,12 @@ use std::cell::RefCell;
 use std::f64::{INFINITY, NEG_INFINITY};
 use std::rc::Weak;
 use crate::{Element,Matrix,point,vector,scale, translation};
-use crate::matrix::matrix::*;
 use crate::rays::{Ray, Intersections,Intersection,hit, intersect_shape};
 use std::rc::Rc;
 use std::{ops::{Index, Add, Sub, Neg, Mul, Div}, vec};
 use std::any::Any;
 use std::ops::Deref;
-use std::f64::consts::PI;
+
 pub static EPSILON: f64 = 0.00001;
 pub static REMAIN: u8 = 4;
 
@@ -22,57 +21,6 @@ pub fn equal_floats(a:&f64,b:&f64) -> bool {
         false
     }
 }
-
-
-pub fn hexagon_corner()
--> Sphere{
-    let mut corner = Sphere::new();
-    corner.set_transform(translation(0.0,0.0,-1.0).dot(scale(0.25,0.25,0.25)).unwrap());
-    corner
-
-}
-
-pub fn hexagon_edge()
--> Cylinder{
-    let mut edge = Cylinder::new();
-    edge.min = 0.0;
-    edge.max = 1.0;
-    edge.set_transform( translation(0.0, 0.0, -1.0).dot(rotate_y(-PI/6.0)).unwrap()
-                        .dot(rotate_z(-PI/2.0)).unwrap()
-                        .dot(scale(0.25, 1.0, 0.25)).unwrap());
-    edge
-
-}
-
-pub fn hexagon_side()
--> Box<dyn ShapeThings>{
-    let side = Group::new();
-    let mut side_rc = wrap_this(side);
-    add_child(&mut side_rc,&RefCell::new(hexagon_corner().this_is()));
-    add_child(&mut side_rc,&RefCell::new(hexagon_edge().this_is()));
-    let r = Rc::try_unwrap(side_rc).unwrap().into_inner();
-    r
-
-}
-
-pub fn hexagon()
--> Rc<RefCell<Box<dyn ShapeThings>>>{
-    eprintln!("breaking_world {:?}",3); 
-    let hex = Group::new();
-    let mut hex = wrap_this(hex);
-    
-   
-    for n in 0..5{
-        let mut side = hexagon_side();
-        eprintln!("breaking_ {:?}",n); 
-        side.set_transform(rotate_y((n as f64) * PI/3.0));
-        add_child(&mut hex,&Rc::new(RefCell::new(side)));
-        
-    }
-    eprintln!{"breaking_world"};
-    hex
-}
-
 
 
 #[derive(Debug,Clone,PartialEq)]
@@ -457,10 +405,10 @@ impl<'a> A for Box<dyn ShapeThings>{
 }
 
 
-pub fn make(b:  Rc<Box<dyn ShapeThings>>, h: Vec<f64>) -> Intersections{
+pub fn make<'a>(b:  Rc<Box<dyn ShapeThings>>, h: Vec<f64>) -> Intersections<'a>{
     let mut list = vec![];
     for (_i,e) in h.iter().enumerate(){
-        let here = Intersection{ t: *e , o: b.clone()};
+        let here = Intersection{ t: *e , o: b};
         list.push(here);
     }
     Intersections { count: h.len() as u8, h: list }
@@ -706,7 +654,7 @@ impl ShapeThings for Group{
         self.clone().transform
     }
     fn normal_at(&self, pos: &Element) -> Element{
-       
+        eprintln!("normal at group {:?}", self);
         let error_handling: Option<u8> = None;
         error_handling.unwrap();
         vector(0.0,0.0,0.0)
@@ -823,33 +771,16 @@ pub fn take_members_out(g: & Rc<RefCell<Box<dyn ShapeThings>>>) -> Vec<Box<dyn S
 //     return list
 // }
 
-pub fn intersect( g: Vec<Box<dyn ShapeThings>>, r: & Ray, mut l: Vec<Intersection>) -> Intersections{
+pub fn intersect<'a>( g: Vec<Box<dyn ShapeThings>>, r: &'a Ray, mut l: Vec<Intersection<'a>>) -> Intersections<'a>{
 
     for e in g{
-        if e.get_kind() == Shapes::Group && e.intersect(r).is_empty(){
-          
-            continue;
-        }
-
-        if e.get_kind() == Shapes::Group{
-            let newj = Rc::new(RefCell::new(e.clone()));
-            let mem = take_members_out(&newj);
-            let mut results = intersect(mem,&r,vec![]); 
-            if results.count > 0 {
-                l.append(&mut results.h);}
-             
-            
-        }
-        else{
         let  v = intersect_shape(r,e);
 
-        for (_a,b) in v.h.iter().enumerate(){   
-            let hits = b.clone(); 
+        for (_a,b) in v.h.iter().enumerate(){   //CHECK 
+            let hits = b.clone(); //issue now bc intersect takes ownership of j
             l.push(hits);
         }
     }
-    }
-    
     l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
     let list_l= l.len() as u8;
     let list_s = l.clone();
@@ -1638,7 +1569,7 @@ pub fn normal_at_w(obj: &Rc<RefCell<Box<dyn ShapeThings>>>, pos: &Element) -> El
    
     let obj = &**obj;
     let local_normal = obj.borrow_mut().normal_at(&local_point);
-
+    eprintln!("com2p");
     normal_to_world(obj, &local_normal)
 
 }
@@ -1836,7 +1767,7 @@ impl World{
     }
 ////
 }
-pub fn intersect_world(w: & World,r:& Ray,mut l:  Vec<Intersection>) -> Intersections{
+pub fn intersect_world<'a>(w: &'a World,r:&'a Ray,mut l:  Vec<Intersection<'a>>) -> Intersections<'a>{
     
     for (_i, j) in w.objects.iter().enumerate(){
         //let k = j;
@@ -1851,32 +1782,27 @@ pub fn intersect_world(w: & World,r:& Ray,mut l:  Vec<Intersection>) -> Intersec
         //     let membs = take_members_out(j);
         //     v = intersect( &membs, r, vec![]);
         // } else {
-        if j.get_kind() == Shapes::Group && j.intersect(r).is_empty(){
-            continue;
-        }
-        //eprintln!("{:?}",_i);
+        
         if j.get_kind() == Shapes::Group{
             let newj = Rc::new(RefCell::new(j.clone()));
             let mem = take_members_out(&newj);
-            let mut results = intersect(mem,&r,vec![]); //sorted
-            l.append(&mut results.h);
+            let results = intersect(mem,&r,vec![]); //sorted
+            return results;
         }
 
-        else {
-        //eprintln!{"ELSE"};
+
         let j = j.clone();
         let  v = intersect_shape(r,j);
         for (_a,b) in v.h.iter().enumerate(){   //CHECK 
             let hits = b.clone(); //issue now bc intersect takes ownership of j
             l.push(hits);
         }
-        }
     }
 
     l.sort_by(|e1 ,e2| e1.t.partial_cmp(&e2.t).unwrap()); //nm
     let list_l= l.len() as u8;
     let list_s = l.clone();
-
+    eprintln!("iw");
     Intersections{ 
         count: list_l,
         h: list_s,
@@ -1889,7 +1815,7 @@ pub fn intersect_world(w: & World,r:& Ray,mut l:  Vec<Intersection>) -> Intersec
 #[derive(Clone, Debug)]
 pub struct Computations{
     pub t: f64,
-    pub object: Rc<Box<dyn ShapeThings>>,
+    pub object: Box<dyn ShapeThings>,
     pub point: Element,
     pub eyev: Element,
     pub normalv: Element,
@@ -1914,7 +1840,7 @@ impl Computations{
     pub fn prepare_computations( hit: &Intersection, r: &Ray, xs: Intersections) -> Computations
     {
         //let xs = xs.clone();
-        let mut containers: Vec<Rc<Box<dyn ShapeThings>>> = vec![];
+        let mut containers: Vec<&Box<dyn ShapeThings>> = vec![];
         let mut n1 = 1.0;
         let mut n2 = 1.0;
         for (_,i) in xs.h.iter().enumerate(){
@@ -1924,9 +1850,9 @@ impl Computations{
                     
                 }
             }
-            match containers.iter().position(|x| *x == i.o) {
+            match containers.iter().position(|&x| x == i.o) {
                 Some(x) => {containers.remove(x);},
-                None => { containers.push(i.o.clone()); }
+                None => { containers.push(i.o); }
             }
             if i == hit{
                 if !containers.is_empty(){ 
@@ -1942,7 +1868,7 @@ impl Computations{
         let t = hit.t;
         let object = &*hit.o;
         let point =r.position(t);
-     
+        eprintln!("object clone {:?}", object.clone());
         let mut normalv = normal_at_w(&Rc::new(RefCell::new(object.clone())), &point); //CHECK
   
         let eyev= -r.clone().direction;
