@@ -37,7 +37,8 @@ pub fn hexagon_edge()
     let mut edge = Cylinder::new();
     edge.min = 0.0;
     edge.max = 1.0;
-    edge.set_transform( translation(0.0, 0.0, -1.0).dot(rotate_y(-PI/6.0)).unwrap()
+    edge.set_transform( translation(0.0, 0.0, -1.0)
+                        .dot(rotate_y(-PI/6.0)).unwrap()
                         .dot(rotate_z(-PI/2.0)).unwrap()
                         .dot(scale(0.25, 1.0, 0.25)).unwrap());
     edge
@@ -45,31 +46,44 @@ pub fn hexagon_edge()
 }
 
 pub fn hexagon_side()
--> Box<dyn ShapeThings>{
+-> Rc<RefCell<Box<dyn ShapeThings>>>{
     let side = Group::new();
-    let mut side_rc = wrap_this(side);
-    add_child(&mut side_rc,&RefCell::new(hexagon_corner().this_is()));
-    add_child(&mut side_rc,&RefCell::new(hexagon_edge().this_is()));
-    let r = Rc::try_unwrap(side_rc).unwrap().into_inner();
-    r
 
+    let mut side_rc = wrap_this(side);
+    let corner = &RefCell::new(hexagon_corner().this_is());
+    let edge = &RefCell::new(hexagon_edge().this_is());
+    add_child(&mut side_rc,corner);
+    add_child(&mut side_rc,edge);
+    //let r = Rc::try_unwrap(side_rc).unwrap().into_inner();
+    //r
+    let pp = &*edge.borrow().get_parent().upgrade().unwrap();
+    //eprintln!{"shapes. get parent hexagon{:?}",pp};
+    side_rc
+ 
 }
 
 pub fn hexagon()
 -> Rc<RefCell<Box<dyn ShapeThings>>>{
-    eprintln!("breaking_world {:?}",3); 
+    //eprintln!("breaking_world {:?}",3); 
     let hex = Group::new();
     let mut hex = wrap_this(hex);
-    
+    let mut list = vec![];
    
-    for n in 0..5{
-        let mut side = hexagon_side();
-        eprintln!("breaking_ {:?}",n); 
+    for n in 0..=5{
+        let side = &*hexagon_side();
+        let mut side = side.borrow().clone();
+
+      //  eprintln!("breaking_ {:?}",n); 
         side.set_transform(rotate_y((n as f64) * PI/3.0));
-        add_child(&mut hex,&Rc::new(RefCell::new(side)));
-        
+        list.push((side));       
     }
-    eprintln!{"breaking_world"};
+    for (i,e) in list.iter().enumerate(){
+        let e = RefCell::new(e.clone());
+        add_child(&mut hex, &e);
+        eprintln!("breaking_ {:?}",&*e.borrow().get_parent().upgrade().unwrap()); 
+    }
+ 
+
     hex
 }
 
@@ -157,6 +171,28 @@ impl BoundingBox {
         }
         result
     }
+
+    pub fn intersect(&self,r: &Ray)
+    -> bool {
+      
+            let bbox = self;
+            //let mut results = vec![];
+            let [xtmin,xtmax] = check_axis(r.origin.x(), r.direction.x(),bbox.min.x(),bbox.max.x());
+            let [ytmin,ytmax] = check_axis(r.origin.y(), r.direction.y(),bbox.min.y(),bbox.max.y());
+            let [ztmin,ztmax] = check_axis(r.origin.z(), r.direction.z(),bbox.min.z(),bbox.max.z());
+            //finding largest min, and smallest max
+            let tmin = *[xtmin,ytmin,ztmin].iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            let tmax = *[xtmax,ytmax,ztmax].iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+            if tmin > tmax { return false } 
+            // let members = self.get_members().borrow();
+            // for (_i,e) in members.iter().enumerate(){
+            //     results.append(&mut e.borrow().intersect(r));
+    
+            // }
+            // results
+            true
+        }
+    
 
 }
 
@@ -739,7 +775,8 @@ pub fn world_to_object(s: &RefCell<Box<dyn ShapeThings>>, p: &Element)
 
     if s.borrow().has_parent(){
 
-        
+        //eprintln!{"shapes. get parent{:?}",&s.borrow().get_parent().upgrade()};
+        //eprintln!{"shapes. get parent of {:?}",s};
         p = world_to_object(&s.borrow().get_parent().upgrade().unwrap(), &p);
  
     }
@@ -826,27 +863,28 @@ pub fn take_members_out(g: & Rc<RefCell<Box<dyn ShapeThings>>>) -> Vec<Box<dyn S
 pub fn intersect( g: Vec<Box<dyn ShapeThings>>, r: & Ray, mut l: Vec<Intersection>) -> Intersections{
 
     for e in g{
-        if e.get_kind() == Shapes::Group && e.intersect(r).is_empty(){
-          
+        if e.get_kind() == Shapes::Group && !e.bounding_box().intersect(r){
+            //eprintln!("shapes. no hit bbox");
             continue;
         }
 
         if e.get_kind() == Shapes::Group{
+            //eprintln!("shapes. group here");
             let newj = Rc::new(RefCell::new(e.clone()));
             let mem = take_members_out(&newj);
             let mut results = intersect(mem,&r,vec![]); 
             if results.count > 0 {
                 l.append(&mut results.h);}
              
-            
         }
         else{
-        let  v = intersect_shape(r,e);
+            //eprintln!("shapes. testing where hit");
+            let  v = intersect_shape(r,e);
 
-        for (_a,b) in v.h.iter().enumerate(){   
-            let hits = b.clone(); 
-            l.push(hits);
-        }
+            for (_a,b) in v.h.iter().enumerate(){   
+                let hits = b.clone(); 
+                l.push(hits);
+            }
     }
     }
     
@@ -919,7 +957,7 @@ impl ShapeThings for Shape{
     //     Box::new(c) as Box<dyn ShapeThings>
     // }
     fn bounding_box(&self) -> BoundingBox{
-        BoundingBox::empty().transform(self.get_transform())
+        BoundingBox::new(point(-1.0,-1.0,-1.0), point(1.0,1.0,1.0))
     }
     fn get_members(&self) -> &RefCell<Vec<RefCell<Box<dyn ShapeThings>>>> {
         &self.members 
@@ -1044,14 +1082,17 @@ impl ShapeThings for Plane{
     }
     
     fn intersect(&self,r: &Ray) -> Vec<f64>{
-        
-        if (r.direction.y()).abs() < EPSILON{
-            vec![]
-        } else {
-            let t = -r.origin.y()/r.direction.y();
-            
-            vec![t]  //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
-            //Plane is too defined, need to push it to trait level
+        if self.bounding_box().intersect(r){
+            if (r.direction.y()).abs() < EPSILON{
+                vec![]
+            } else {
+                let t = -r.origin.y()/r.direction.y();
+                
+                vec![t]  //why does it not know plane has shapethings/ q: dyn shapethings == shapethings?
+                //Plane is too defined, need to push it to trait level
+            }
+        } else{
+            return vec![];
         }
     }
     fn this_is(self) -> Box<dyn ShapeThings>
@@ -1282,35 +1323,38 @@ impl ShapeThings for Cylinder{
     
     fn intersect(&self,r: &Ray) -> Vec<f64>{
         let mut xs:Vec<f64> = vec![];
-        let a = r.direction.x().powi(2) + r.direction.z().powi(2);
+        //if self.bounding_box().intersect(r){
+        
+            let a = r.direction.x().powi(2) + r.direction.z().powi(2);
 
-        if equal_floats(&0.0_f64,&a) {         
-            self.intersect_cap(r,&mut xs);
-              
-        } else {
+            if equal_floats(&0.0_f64,&a) {         
+                self.intersect_cap(r,&mut xs);
+                
+            } else {
 
-            let b = 2.0 * r.origin.x() * r.direction.x() +
-                    2.0 * r.origin.z() * r.direction.z();
-            let c = r.origin.x().powi(2) + r.origin.z().powi(2) - 1.0;
+                let b = 2.0 * r.origin.x() * r.direction.x() +
+                        2.0 * r.origin.z() * r.direction.z();
+                let c = r.origin.x().powi(2) + r.origin.z().powi(2) - 1.0;
 
-            let disc = b.powi(2) - 4.0 * a * c;
-            
-            if disc < 0.0 { return xs }
-            
-            let mut t0 = (-b - disc.sqrt())/(2.0*a);
-            let mut t1 = (-b + disc.sqrt())/(2.0*a);
-            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
-            
-            let y0 = r.origin.y() + t0 * r.direction.y();
-            if self.min < y0 && y0 < self.max {
-                xs.push(t0);
+                let disc = b.powi(2) - 4.0 * a * c;
+                
+                if disc < 0.0 { return xs }
+                
+                let mut t0 = (-b - disc.sqrt())/(2.0*a);
+                let mut t1 = (-b + disc.sqrt())/(2.0*a);
+                if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+                
+                let y0 = r.origin.y() + t0 * r.direction.y();
+                if self.min < y0 && y0 < self.max {
+                    xs.push(t0);
+                }
+                let y1 = r.origin.y() + t1 * r.direction.y();
+                if self.min < y1 && y1 < self.max {
+                    xs.push(t1);
+                }
+                self.intersect_cap(r,&mut xs);
             }
-            let y1 = r.origin.y() + t1 * r.direction.y();
-            if self.min < y1 && y1 < self.max {
-                xs.push(t1);
-            }
-            self.intersect_cap(r,&mut xs);
-        }
+        //} 
         xs
 
     }
@@ -1425,41 +1469,43 @@ impl ShapeThings for Cone{
     
     fn intersect(&self,r: &Ray) -> Vec<f64>{
         let mut xs:Vec<f64> = vec![];
-        let a = r.direction.x().powi(2) - r.direction.y().powi(2) + r.direction.z().powi(2);
-        let b = 2.0 * r.origin.x() * r.direction.x() -
-        2.0 * r.origin.y() * r.direction.y() +
-        2.0 * r.origin.z() * r.direction.z();
-        let c = r.origin.x().powi(2) - r.origin.y().powi(2) + r.origin.z().powi(2);
-        
-        if equal_floats(&0.0_f64,&a) && equal_floats(&0.0_f64,&b) { 
+        if self.bounding_box().intersect(r) {
+            let a = r.direction.x().powi(2) - r.direction.y().powi(2) + r.direction.z().powi(2);
+            let b = 2.0 * r.origin.x() * r.direction.x() -
+            2.0 * r.origin.y() * r.direction.y() +
+            2.0 * r.origin.z() * r.direction.z();
+            let c = r.origin.x().powi(2) - r.origin.y().powi(2) + r.origin.z().powi(2);
+            
+            if equal_floats(&0.0_f64,&a) && equal_floats(&0.0_f64,&b) { 
 
-            self.intersect_cap(r,&mut xs);
-              
-        } else if equal_floats(&0.0_f64,&a) {
-            let t = -c/(2.0*b);
-            xs.push(t);
-            self.intersect_cap(r,&mut xs);
+                self.intersect_cap(r,&mut xs);
+                
+            } else if equal_floats(&0.0_f64,&a) {
+                let t = -c/(2.0*b);
+                xs.push(t);
+                self.intersect_cap(r,&mut xs);
 
-        } else {
-            
+            } else {
+                
 
-            let disc = b.powi(2) - 4.0 * a * c;
-            
-            if disc < 0.0 { return xs }
-            
-            let mut t0 = (-b - disc.sqrt())/(2.0*a);
-            let mut t1 = (-b + disc.sqrt())/(2.0*a);
-            if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
-            
-            let y0 = r.origin.y() + t0 * r.direction.y();
-            if self.min < y0 && y0 < self.max {
-                xs.push(t0);
+                let disc = b.powi(2) - 4.0 * a * c;
+                
+                if disc < 0.0 { return xs }
+                
+                let mut t0 = (-b - disc.sqrt())/(2.0*a);
+                let mut t1 = (-b + disc.sqrt())/(2.0*a);
+                if t0 > t1 { std::mem::swap(&mut t0,&mut t1 )} ;
+                
+                let y0 = r.origin.y() + t0 * r.direction.y();
+                if self.min < y0 && y0 < self.max {
+                    xs.push(t0);
+                }
+                let y1 = r.origin.y() + t1 * r.direction.y();
+                if self.min < y1 && y1 < self.max {
+                    xs.push(t1);
+                }
+                self.intersect_cap(r,&mut xs);
             }
-            let y1 = r.origin.y() + t1 * r.direction.y();
-            if self.min < y1 && y1 < self.max {
-                xs.push(t1);
-            }
-            self.intersect_cap(r,&mut xs);
         }
         xs
 
@@ -1559,33 +1605,38 @@ impl ShapeThings for Sphere{
     }
     fn get_kind(&self) -> Shapes { Shapes::Sphere}
     fn intersect(&self,r: &Ray) -> Vec<f64>{
-         //why ref here too?, isnt obj already one?, accessing fields changes this?
-        
-        //maybe have dot use reference so we dont have to keep repeating clone
-        let a = r.clone().direction.dot(r.clone().direction);
-        let b = 2.0 * r.clone().direction.dot(r.clone().sphere_to_ray(&self));
-        let c = r.clone().sphere_to_ray(&self).dot(r.clone().sphere_to_ray(&self)) - 1.0; 
-        //radius is still 1 bc we are scaling the ray, operating in object space
-        // eprintln!("t_r: {:?}", t_r); //correct
-        // eprintln!("sphere loc: {:?}", obj.loc);
-        // eprintln!("sphere to ray: {:?}", t_r.clone().sphere_to_ray(&obj));
-        // eprintln!("a: {:?}, \n b: {:?} \n c: {:?} ", a,b,c);
-            //a is modulus squared
-            //b 
-        let discri = b.powi(2) - 4.0 * a * c;
-        if discri < 0.0 {
-            vec![]
-        } else {
-            let t1 = (-b - discri.sqrt())/(2.0*a);
-            let t2 = (-b + discri.sqrt())/(2.0*a);
-            //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
-            //let s1 =  t_r.position(t1).z();
-            //let s2 =  t_r.position(t2).z(); //s's are positions of intersections
-            //distance away is given by position()
- 
-            vec![t1,t2]         
-            }
+       // if self.bounding_box().intersect(r){
+            //why ref here too?, isnt obj already one?, accessing fields changes this?
+            
+            //maybe have dot use reference so we dont have to keep repeating clone
+            let a = r.clone().direction.dot(r.clone().direction);
+            let b = 2.0 * r.clone().direction.dot(r.clone().sphere_to_ray(&self));
+            let c = r.clone().sphere_to_ray(&self).dot(r.clone().sphere_to_ray(&self)) - 1.0; 
+            //radius is still 1 bc we are scaling the ray, operating in object space
+            // eprintln!("t_r: {:?}", t_r); //correct
+            // eprintln!("sphere loc: {:?}", obj.loc);
+            // eprintln!("sphere to ray: {:?}", t_r.clone().sphere_to_ray(&obj));
+            // eprintln!("a: {:?}, \n b: {:?} \n c: {:?} ", a,b,c);
+                //a is modulus squared
+                //b 
+            let discri = b.powi(2) - 4.0 * a * c;
+            if discri < 0.0 {
+                vec![]
+            } else {
+                let t1 = (-b - discri.sqrt())/(2.0*a);
+                let t2 = (-b + discri.sqrt())/(2.0*a);
+                //even if the t is in object space, why should it be different? the direction has been scaled as well so it should cancel out
+                //let s1 =  t_r.position(t1).z();
+                //let s2 =  t_r.position(t2).z(); //s's are positions of intersections
+                //distance away is given by position()
+    
+                vec![t1,t2]         
+                }
         }
+    //    else{ 
+    //        return vec![]
+    //        }
+    //    }
     fn get_transform(&self) -> Matrix {
         self.clone().transform
     }
@@ -1634,6 +1685,7 @@ pub fn normal_at<S: ?Sized>(obj: &S, pos: &Element) -> Element //what does it me
 
 pub fn normal_at_w(obj: &Rc<RefCell<Box<dyn ShapeThings>>>, pos: &Element) -> Element //what does it mean when size is unknown
     {
+    //eprintln!("shapes. normal at w {:?}",obj);
     let local_point = world_to_object(obj, pos);
    
     let obj = &**obj;
@@ -1851,11 +1903,11 @@ pub fn intersect_world(w: & World,r:& Ray,mut l:  Vec<Intersection>) -> Intersec
         //     let membs = take_members_out(j);
         //     v = intersect( &membs, r, vec![]);
         // } else {
-        if j.get_kind() == Shapes::Group && j.intersect(r).is_empty(){
+        if j.get_kind() == Shapes::Group && !j.bounding_box().intersect(r){
             continue;
         }
         //eprintln!("{:?}",_i);
-        if j.get_kind() == Shapes::Group{
+        else if j.get_kind() == Shapes::Group{
             let newj = Rc::new(RefCell::new(j.clone()));
             let mem = take_members_out(&newj);
             let mut results = intersect(mem,&r,vec![]); //sorted
@@ -1914,6 +1966,7 @@ impl Computations{
     pub fn prepare_computations( hit: &Intersection, r: &Ray, xs: Intersections) -> Computations
     {
         //let xs = xs.clone();
+        //eprintln!("shapes. prepare computations. hit {:?}", hit);
         let mut containers: Vec<Rc<Box<dyn ShapeThings>>> = vec![];
         let mut n1 = 1.0;
         let mut n2 = 1.0;

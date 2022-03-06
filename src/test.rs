@@ -1664,7 +1664,13 @@ pub mod tests{
         add_child(&mut g1_rc,&c); 
 
         let bbox = g1_rc.borrow_mut().bounding_box();
-        assert_eq!(bbox,BoundingBox::new(point(-4.5, -3.0, -5.0) ,point(4.0, 7.0, 4.5)))
+        assert_eq!(bbox,BoundingBox::new(point(-4.5, -3.0, -5.0) ,point(4.0, 7.0, 4.5)));
+
+        let mut s = Sphere::new();
+        s.set_transform(translation(1.0,-3.0,5.0).dot(scale(0.5,2.0,4.0)).unwrap());
+        let bbox = s.bounding_box();
+        assert_eq!(bbox,BoundingBox::new(point(0.5, -5.0, 1.0) ,point(1.5, -1.0, 9.0)));
+
 
         
 
@@ -1682,7 +1688,120 @@ pub mod tests{
 
     }
 
+    #[test]
+    pub fn bounding_box_intersects(){
+        
+        let bbox = BoundingBox::new(point(5.0,-2.0,0.0),point(11.0,4.0,7.0));
+        let answers = [
+        ( point(15.0, 1.0, 2.0)  , vector(-1.0, 0.0, 0.0) , true   ),
+        ( point(-5.0, -1.0, 4.0) , vector(1.0, 0.0, 0.0)  , true   ),
+        ( point(7.0, 6.0, 5.0)   , vector(0.0, -1.0, 0.0) , true   ),
+        ( point(9.0, -5.0, 6.0)  , vector(0.0, 1.0, 0.0)  , true   ),
+        ( point(8.0, 2.0, 12.0)  , vector(0.0, 0.0, -1.0) , true   ),
+        ( point(6.0, 0.0, -5.0)  , vector(0.0, 0.0, 1.0)  , true   ),
+        ( point(8.0, 1.0, 3.5) , vector(0.0, 0.0, 1.0)  , true   ),
+        ( point(9.0, -1.0, -8.0) , vector(2.0, 4.0, 6.0)  , false  ),
+        ( point(8.0, 3.0, -4.0)  , vector(6.0, 2.0, 4.0)  , false  ),
+        ( point(9.0, -1.0, -2.0) , vector(4.0, 6.0, 2.0)  , false  ),
+        ( point(4.0, 0.0, 9.0)   , vector(0.0, 0.0, -1.0) , false  ),
+        ( point(8.0, 6.0, -1.0)  , vector(0.0, -1.0, 0.0) , false  ),
+        ( point(12.0, 5.0, 4.0)  , vector(-1.0, 0.0, 0.0) , false  ),];
 
+        for (i,e) in answers.iter().enumerate(){
+                        let direction = e.1.normal();
+                        let ray = Ray::new(e.0.clone(),direction);
+
+                        let xs = bbox.intersect(&ray);
+                        assert_eq!(xs,e.2)
+                    }
+    }
+
+    #[test]
+    pub fn bounding_box_shapes(){
+        let mut s = Cylinder::new();
+        s.min = -5.0;
+        s.max = 3.0;
+
+        let bbox = s.bounding_box();
+        assert_eq!(point(-1.0,-5.0,-1.0),bbox.min);
+        assert_eq!(point(1.0,3.0,1.0),bbox.max);
+
+
+        let mut s = Cone::new();
+        s.min = -5.0;
+        s.max = 3.0;
+
+        let bbox = s.bounding_box();
+        assert_eq!(point(-5.0,-5.0,-5.0),bbox.min);
+        assert_eq!(point(5.0,3.0,5.0),bbox.max);
+
+    }
+
+    #[test]
+    pub fn group_bounding_box_child(){
+        let c = Shape::test();
+        let s = Group::new();
+
+        let c = wrap_this(c);
+        let h = hexagon();
+        let mut s = wrap_this(s);
+        
+        add_child(&mut s, &c);
+        add_child(&mut s, &h);
+        let r = &Ray::new(point(0.0,0.0,-5.0),vector(0.0,1.0,0.0));
+        
+        let s = s.borrow_mut().clone();
+
+        let mut l = vec![];
+        if s.get_kind() == Shapes::Group && !s.bounding_box().intersect(r){
+            eprintln!("nono");
+        }
+        //eprintln!("{:?}",_i);
+        else if s.get_kind() == Shapes::Group{
+            eprintln!("group");
+            let newj = Rc::new(RefCell::new(s.clone()));
+            let mem = take_members_out(&newj);
+            let mut results = intersect(mem,&r,vec![]); //sorted
+            l.append(&mut results.h);
+        }
+
+        else {
+            eprintln!("nono2");
+            //eprintln!{"ELSE"};
+            let s = s.clone();
+            let  v = intersect_shape(r,s);
+            for (_a,b) in v.h.iter().enumerate(){   //CHECK 
+                let hits = b.clone(); //issue now bc intersect takes ownership of j
+                l.push(hits);
+        }
+    }
+    eprintln!("l {:?}",l)
+}
+
+    #[test]
+    pub fn hexagon_color(){
+        let h = &*hexagon();
+        let h = h.borrow().clone();
+
+        let w = World { objects: vec![h] , 
+            light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) };
+
+        let mut intersections = intersect_world(&w, &Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), vec![]);
+        //let c = color_at(&w, &Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), 5);
+        let i_c = intersections.clone();
+        let hit = hit(&mut intersections);
+        
+
+            
+            let comp = Computations::prepare_computations(hit.unwrap(),&Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), i_c);
+            
+            //shade_hit(&w,comp, 5);
+            
+
+
+    
+
+    }
 }
 
 

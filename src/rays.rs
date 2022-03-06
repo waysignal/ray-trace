@@ -107,10 +107,12 @@ pub fn intersect_shape(r: & Ray, obj: Box<dyn ShapeThings>) -> Intersections{
     let parent_members = obj.get_members().clone();
 
     
-    if obj.get_kind() == Shapes::Group && obj.intersect(r).is_empty(){
+    if obj.get_kind() == Shapes::Group && !obj.bounding_box().intersect(r){
+        //eprintln!("rays. no bbox hit");
         return Intersections::empty();
     }
     else if obj.get_kind() == Shapes::Group {
+        //eprintln!("rays. group ");
         let obj = obj.clone();
         let members = take_members_out(&Rc::new(RefCell::new(obj)));
         let mut results = Intersections::empty();
@@ -124,6 +126,9 @@ pub fn intersect_shape(r: & Ray, obj: Box<dyn ShapeThings>) -> Intersections{
             // j.set_transform(matrix);
             let x = e.clone();
             let xs = e.intersect(&local_ray);
+            if xs.is_empty() { 
+                continue;
+            }
             let is = make(Rc::new(x),xs);
             //list.push(j);
             results = results.adder(is);
@@ -136,6 +141,7 @@ pub fn intersect_shape(r: & Ray, obj: Box<dyn ShapeThings>) -> Intersections{
     }
     //eprintln!("taking33 {:?}",results);
     let xs = obj.intersect(&local_ray);
+    //eprintln!("rays. xs {:?}",xs);
     make(Rc::new(obj),xs)
 
     
