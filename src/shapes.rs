@@ -28,6 +28,7 @@ pub fn hexagon_corner()
 -> Sphere{
     let mut corner = Sphere::new();
     corner.set_transform(translation(0.0,0.0,-1.0).dot(scale(0.25,0.25,0.25)).unwrap());
+    corner.set_transform(rotate_y((3 as f64) * PI/3.0));//
     corner
 
 }
@@ -41,15 +42,18 @@ pub fn hexagon_edge()
                         .dot(rotate_y(-PI/6.0)).unwrap()
                         .dot(rotate_z(-PI/2.0)).unwrap()
                         .dot(scale(0.25, 1.0, 0.25)).unwrap());
+    edge.set_transform(rotate_y((3 as f64) * PI/3.0));//
     edge
 
 }
 
-pub fn hexagon_side()
--> Rc<RefCell<Box<dyn ShapeThings>>>{
-    let side = Group::new();
+pub fn hexagon_side(g: Rc<RefCell<Box<dyn ShapeThings>>>) //g: &mut Rc<RefCell<Box<dyn ShapeThings>>>
+-> Rc<RefCell<Box<dyn ShapeThings>>>
+    {
+    let mut side_rc = g;
 
-    let mut side_rc = wrap_this(side);
+
+    //let mut side_rc = wrap_this(side);
     let corner = &RefCell::new(hexagon_corner().this_is());
     let edge = &RefCell::new(hexagon_edge().this_is());
     add_child(&mut side_rc,corner);
@@ -58,6 +62,7 @@ pub fn hexagon_side()
     //r
     let pp = &*edge.borrow().get_parent().upgrade().unwrap();
     //eprintln!{"shapes. get parent hexagon{:?}",pp};
+    //can unwrap the parent of cylinders here
     side_rc
  
 }
@@ -67,27 +72,143 @@ pub fn hexagon()
     //eprintln!("breaking_world {:?}",3); 
     let hex = Group::new();
     let mut hex = wrap_this(hex);
-    let mut list = vec![];
+    //let mut list = vec![];
    
-    for n in 0..=5{
-        let side = &*hexagon_side();
-        let mut side = side.borrow().clone();
+    let side_h = Group::new();
+    let mut side_h = wrap_this(side_h);
+    let side_h = hexagon_side(side_h);
+    // let h = &*side_h;
+    // let side_h = h.borrow().clone();
+    //side_h
+    // let h = &*side_h;
+    // let mut side_h = h.borrow().clone();
+    //*side_h.set_transform(rotate_y((3 as f64) * PI/3.0));
+    add_child(&mut hex, &(side_h));
 
-      //  eprintln!("breaking_ {:?}",n); 
-        side.set_transform(rotate_y((n as f64) * PI/3.0));
-        list.push((side));       
-    }
-    for (i,e) in list.iter().enumerate(){
-        let e = RefCell::new(e.clone());
-        add_child(&mut hex, &e);
-        eprintln!("breaking_ {:?}",&*e.borrow().get_parent().upgrade().unwrap()); 
-    }
+    //hex
+    // let h = &*hex;
+    // let side_h = h.borrow().clone();
+    side_h
+        
+
+    // for n in 0..=5{
+
+    //     hexagon_side(&mut side_h);
+    //     let side = &*side_h;
+    //     let mut side = side.borrow().clone();
+    //     side.set_transform(rotate_y((n as f64) * PI/3.0));
+    //     add_child(&mut side_h, &RefCell::new(side));
+  
+    // }
+    // let side0_h = Group::new();
+    // let mut side0_h = wrap_this(side0_h);
+    // hexagon_side(&mut side0_h);
+    // let side0 = &*side0_h;
+    // let mut side0 = side0.borrow().clone();
+    // side0.set_transform(rotate_y((0 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side0));
+
+    // let side1_h = Group::new();
+    // let mut side1_h = wrap_this(side1_h);
+    // hexagon_side(&mut side1_h);
+    // let side1 = &*side1_h;
+    // let mut side1 = side1.borrow().clone();
+    // side1.set_transform(rotate_y((1 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side1));
+
+    // let side2_h = Group::new();
+    // let mut side2_h = wrap_this(side2_h);
+    // hexagon_side(&mut side2_h);
+    // let side2 = &*side2_h;
+    // let mut side2 = side2.borrow().clone();
+    // side2.set_transform(rotate_y((2 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side2));
+
+    // let side3_h = Group::new();
+    // let mut side3_h = wrap_this(side3_h);
+    // hexagon_side(&mut side3_h);
+    // let side3 = &*side3_h;
+    // let mut side3 = side3.borrow().clone();
+    // side3.set_transform(rotate_y((3 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side3));
+
+    // let side4_h = Group::new();
+    // let mut side4_h = wrap_this(side4_h);
+    // hexagon_side(&mut side4_h);
+    // let side = &*side4_h;
+    // let mut side = side.borrow().clone();
+    // side.set_transform(rotate_y((4 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side));
+
+    // let side5_h = Group::new();
+    // let mut side5_h = wrap_this(side5_h);
+    // hexagon_side(&mut side5_h);
+    // let side = &*side5_h;
+    // let mut side = side.borrow().clone();
+    // side.set_transform(rotate_y((5 as f64) * PI/3.0));
+    // add_child(&mut hex, &RefCell::new(side));
+
  
 
-    hex
+
 }
 
+// pub fn hexagon()
+// -> Rc<RefCell<Box<dyn ShapeThings>>>{
+   
 
+//     let side_h = Group::new();
+//     let mut side_h = wrap_this(side_h);
+
+//     for n in 0..=5{
+     
+//         hexagon_side(&mut side_h);
+//         let side = &*side_h;
+//         let mut side = side.borrow().clone();
+
+   
+//         side.set_transform(rotate_y((n as f64) * PI/3.0));
+//         add_child(&mut side_h, &RefCell::new(side));
+       
+//     }
+
+//     side_h
+// }
+
+// pub fn hexagon()
+// -> Rc<RefCell<Box<dyn ShapeThings>>>{
+//     //eprintln!("breaking_world {:?}",3); 
+//     let hex = Group::new();
+//     let mut hex = wrap_this(hex);
+//     //let mut list = vec![];
+   
+//     let side_h = Group::new();
+//     let mut side_h = wrap_this(side_h);
+
+//     for n in 0..=5{
+//         //let side = &*hexagon_side(&mut hex);
+//         //let side = Group::new();
+//         //let mut side = wrap_this(side);
+//         hexagon_side(&mut side_h);
+//         let side = &*side_h;
+//         let mut side = side.borrow().clone();
+
+//       //  eprintln!("breaking_ {:?}",n); 
+//         side.set_transform(rotate_y((n as f64) * PI/3.0));
+//         add_child(&mut side_h, &RefCell::new(side));
+//         //list.push((side));       
+//     }
+//     // for (i,e) in list.iter().enumerate(){
+//     //     let e = RefCell::new(e.clone());
+//     //     add_child(&mut hex, &e);
+//     //     //eprintln!("breaking_ {:?}",&*e.borrow().get_parent().upgrade().unwrap()); 
+//     //     //can unwrap parents of each side here-> can't unwrap the parent of cylinder
+//     // }
+        
+//     // not the refcell
+
+//     side_h
+// }
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct BoundingBox {

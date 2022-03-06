@@ -1426,371 +1426,386 @@ pub mod tests{
 //         }
 //     }
 
-    #[test]
-    pub fn groups_feature_195(){
-        let mut g = Group::new();
-        assert_eq!(Shape::test().transform,g.transform);
-        assert_eq!(0, g.members.borrow().len());
+//////////////////////////////////////////////////////////////////
+//     #[test]
+//     pub fn groups_feature_195(){
+//         let mut g = Group::new();
+//         assert_eq!(Shape::test().transform,g.transform);
+//         assert_eq!(0, g.members.borrow().len());
       
-        assert_eq!(true, Shape::test().parent.is_none());
-        let mut g_w = wrap_this(g);
-        let s_w = wrap_this(Shape::test());
-        add_child(&mut g_w, &s_w); // *** ALLOWS FOR CHANGE IN MEMBERS FIELD EVEN IF GROUP IS IMMUTABLE?? 
-        assert_ne!(0, g_w.borrow_mut().get_members().borrow().len());
+//         assert_eq!(true, Shape::test().parent.is_none());
+//         let mut g_w = wrap_this(g);
+//         let s_w = wrap_this(Shape::test());
+//         add_child(&mut g_w, &s_w); // *** ALLOWS FOR CHANGE IN MEMBERS FIELD EVEN IF GROUP IS IMMUTABLE?? 
+//         assert_ne!(0, g_w.borrow_mut().get_members().borrow().len());
  
-        //&mut g and & g (with g being mut) are different
-        assert_eq!(*g_w.borrow_mut().get_members(),RefCell::new(vec![RefCell::new(Shape::test().this_is())]));
-        let get_parent_of_s = s_w.borrow_mut().get_parent().upgrade().unwrap(); //clone bc this data lives on heap,
+//         //&mut g and & g (with g being mut) are different
+//         assert_eq!(*g_w.borrow_mut().get_members(),RefCell::new(vec![RefCell::new(Shape::test().this_is())]));
+//         let get_parent_of_s = s_w.borrow_mut().get_parent().upgrade().unwrap(); //clone bc this data lives on heap,
         
-        assert_eq!(get_parent_of_s, g_w)
+//         assert_eq!(get_parent_of_s, g_w)
    
-        // design decision: using option for parent: only one parent allowed, bc having vec! for parents is difficult when accessing the inner values, (have to move out of index
-        // but the data structure does not implement copy trait)
+//         // design decision: using option for parent: only one parent allowed, bc having vec! for parents is difficult when accessing the inner values, (have to move out of index
+//         // but the data structure does not implement copy trait)
 
-    }
+//     }
 
 
-    #[test]
-    pub fn groups_feature_196(){
-        let g = Group::new();
-        let r = Ray::new(   point(0.0,0.0,0.0),
-                                vector(0.0,0.0,0.0));
-        let xs = g.intersect(&r);
-        assert_eq!(0,xs.len());
+//     #[test]
+//     pub fn groups_feature_196(){
+//         let g = Group::new();
+//         let r = Ray::new(   point(0.0,0.0,0.0),
+//                                 vector(0.0,0.0,0.0));
+//         let xs = g.intersect(&r);
+//         assert_eq!(0,xs.len());
 
-        let mut g_rc = wrap_this(g);
+//         let mut g_rc = wrap_this(g);
 
-        let s1 = Sphere::new();
-        let s1_rc = wrap_this(s1);
-        let mut s2 = Sphere::new();
-        s2.set_transform(translation(0.0,0.0,-3.0));
-        let s2_rc = wrap_this(s2);
+//         let s1 = Sphere::new();
+//         let s1_rc = wrap_this(s1);
+//         let mut s2 = Sphere::new();
+//         s2.set_transform(translation(0.0,0.0,-3.0));
+//         let s2_rc = wrap_this(s2);
        
 
-        let mut s3 = Sphere::new();
-        s3.set_transform(translation(5.0,0.0,0.0));
-        let s3_rc = wrap_this(s3);
+//         let mut s3 = Sphere::new();
+//         s3.set_transform(translation(5.0,0.0,0.0));
+//         let s3_rc = wrap_this(s3);
         
         
-        add_child(&mut g_rc, &s1_rc);
-        add_child(&mut g_rc,&s2_rc);
-        add_child(&mut g_rc,&s3_rc);
+//         add_child(&mut g_rc, &s1_rc);
+//         add_child(&mut g_rc,&s2_rc);
+//         add_child(&mut g_rc,&s3_rc);
        
-        let r = Ray::new(   point(0.0,0.0,-5.0),
-                                vector(0.0,0.0,1.0));
-        let list = take_members_out(&g_rc);
+//         let r = Ray::new(   point(0.0,0.0,-5.0),
+//                                 vector(0.0,0.0,1.0));
+//         let list = take_members_out(&g_rc);
         
-        let results = intersect(list,&r,vec![]);
+//         let results = intersect(list,&r,vec![]);
     
-        assert_eq!(4,results.count);
-        // assert!(results.h[0].o == s2_rc);
-        // assert_eq!(Rc::new(*s2_rc.borrow_mut()),results.h[1].o);
-        // assert_eq!(Rc::new(*s1_rc.borrow_mut()),results.h[2].o);
-        // assert_eq!(Rc::new(*s1_rc.borrow_mut()),results.h[3].o);
-        // from prior version: 
-        // issues in the beginning with intersections due to calling the local transform and not intersect_shape (where ray is transformed)
-        // note: update_parent_.. adds a Rc to a CLONED parent, therefore the parent(in the field) does not have the member's parent updated
-        // so in members -> parent [field] = parent[with members with parents:none], but the overall parent does have the individual members within the member field
-        // ran into the mutable borrow constraint with refcell, checked at compile time? or is it run time -> the later one
-        // issues with lifetimes not being consistent when using references -> tried references bc did not want to take ownership 
-        // vec![refcell] had to create a helper function to convert to just vec![] -> question now is why am i using refcell -> edit: hmm probably could use just vec!
-    }
+//         assert_eq!(4,results.count);
+//         // assert!(results.h[0].o == s2_rc);
+//         // assert_eq!(Rc::new(*s2_rc.borrow_mut()),results.h[1].o);
+//         // assert_eq!(Rc::new(*s1_rc.borrow_mut()),results.h[2].o);
+//         // assert_eq!(Rc::new(*s1_rc.borrow_mut()),results.h[3].o);
+//         // from prior version: 
+//         // issues in the beginning with intersections due to calling the local transform and not intersect_shape (where ray is transformed)
+//         // note: update_parent_.. adds a Rc to a CLONED parent, therefore the parent(in the field) does not have the member's parent updated
+//         // so in members -> parent [field] = parent[with members with parents:none], but the overall parent does have the individual members within the member field
+//         // ran into the mutable borrow constraint with refcell, checked at compile time? or is it run time -> the later one
+//         // issues with lifetimes not being consistent when using references -> tried references bc did not want to take ownership 
+//         // vec![refcell] had to create a helper function to convert to just vec![] -> question now is why am i using refcell -> edit: hmm probably could use just vec!
+//     }
 
 
-    #[test]
-    pub fn groups_feature_197(){
-        let mut g = Group::new();
+//     #[test]
+//     pub fn groups_feature_197(){
+//         let mut g = Group::new();
     
-        g.set_transform(scale(2.0,2.0,2.0));
-        let mut g_rc = Rc::new(RefCell::new(g.this_is()));
-        let mut s1 = Sphere::new();
-        s1.set_transform(translation(5.0,0.0,0.0));
-        let s1_rc = wrap_this(s1);
+//         g.set_transform(scale(2.0,2.0,2.0));
+//         let mut g_rc = Rc::new(RefCell::new(g.this_is()));
+//         let mut s1 = Sphere::new();
+//         s1.set_transform(translation(5.0,0.0,0.0));
+//         let s1_rc = wrap_this(s1);
        
-        add_child(&mut g_rc, &s1_rc);
+//         add_child(&mut g_rc, &s1_rc);
         
      
 
-        //let g = Rc::try_unwrap(g_rc).unwrap(); //edit: no bc g_rc points to a clone of g; the members of g are updated to have parent of a CLONE of g
+//         //let g = Rc::try_unwrap(g_rc).unwrap(); //edit: no bc g_rc points to a clone of g; the members of g are updated to have parent of a CLONE of g
         
-        let r = Ray::new(   point(10.0,0.0,-10.0),
-                                vector(0.0,0.0,1.0));
-        let list = take_members_out(&g_rc);
+//         let r = Ray::new(   point(10.0,0.0,-10.0),
+//                                 vector(0.0,0.0,1.0));
+//         let list = take_members_out(&g_rc);
 
-        let results = intersect(list,&r,vec![]);
+//         let results = intersect(list,&r,vec![]);
      
     
-        assert_eq!(2,results.count);
-        //adding helper function to apply group's tranform to ray before the object's transform -> edit: implemented the transform in the TAKING OUT helper function
+//         assert_eq!(2,results.count);
+//         //adding helper function to apply group's tranform to ray before the object's transform -> edit: implemented the transform in the TAKING OUT helper function
 
-    }
+//     }
 
-    #[test]
-    pub fn shapes_feature_198(){
-        // older: 
-        // let mut g1 = Group::new();
-        // g1.set_transform(rotate_y(PI/2.0));
-        // let mut g2 = Group::new().set_transform_group(scale(2.0,2.0,2.0));
-        // let mut s = Sphere::new();
-        // s.set_transform(translation(5.0,0.0,0.0));
+//     #[test]
+//     pub fn shapes_feature_198(){
+//         // older: 
+//         // let mut g1 = Group::new();
+//         // g1.set_transform(rotate_y(PI/2.0));
+//         // let mut g2 = Group::new().set_transform_group(scale(2.0,2.0,2.0));
+//         // let mut s = Sphere::new();
+//         // s.set_transform(translation(5.0,0.0,0.0));
   
 
-        // ///adding g2 to g1
-        // let g1_rc = Rc::new(RefCell::new(g1.this_is()));
+//         // ///adding g2 to g1
+//         // let g1_rc = Rc::new(RefCell::new(g1.this_is()));
 
-        // let mut g2_rc = Rc::new(RefCell::new(g2.this_is()));                            /// g2_rc
-        // eprintln!("{:?}",Rc::strong_count(&g1_rc));
+//         // let mut g2_rc = Rc::new(RefCell::new(g2.this_is()));                            /// g2_rc
+//         // eprintln!("{:?}",Rc::strong_count(&g1_rc));
 
-        // let s = wrap_this(s);
-        // add_child(&mut g2_rc,&s); //g2 <=> s
+//         // let s = wrap_this(s);
+//         // add_child(&mut g2_rc,&s); //g2 <=> s
         
-        // g2_rc.borrow_mut().set_parent(&g1_rc);
-        // eprintln!("g1 parent {:?}",g1_rc);
-        // g1_rc.borrow_mut().set_sub_group(&g2_rc); //g1 <=> g2
-        // eprintln!("g1 AFTER SUBGROUP {:?}",g1_rc);
-        // eprintln!("g2 parent {:?}",g2_rc);
+//         // g2_rc.borrow_mut().set_parent(&g1_rc);
+//         // eprintln!("g1 parent {:?}",g1_rc);
+//         // g1_rc.borrow_mut().set_sub_group(&g2_rc); //g1 <=> g2
+//         // eprintln!("g1 AFTER SUBGROUP {:?}",g1_rc);
+//         // eprintln!("g2 parent {:?}",g2_rc);
 
-        // let p = world_to_object(&s,&point(-2.0,0.0,-10.0));
-        // assert!(p.matrix.equal(point(0.0,0.0,-1.0).matrix));
+//         // let p = world_to_object(&s,&point(-2.0,0.0,-10.0));
+//         // assert!(p.matrix.equal(point(0.0,0.0,-1.0).matrix));
 
-        let mut g1 = Group::new();
-        g1.set_transform(rotate_y(PI/2.0));
-        let mut g2 = Group::new();
-        g2.set_transform(scale(2.0,2.0,2.0));
-        let mut s = Sphere::new();
-        s.set_transform(translation(5.0,0.0,0.0));
+//         let mut g1 = Group::new();
+//         g1.set_transform(rotate_y(PI/2.0));
+//         let mut g2 = Group::new();
+//         g2.set_transform(scale(2.0,2.0,2.0));
+//         let mut s = Sphere::new();
+//         s.set_transform(translation(5.0,0.0,0.0));
   
 
-        ///adding g2 to g1
-        let mut g1_rc = wrap_this(g1);
-        let mut g2_rc = wrap_this(g2);                        
-        let s = wrap_this(s);
+//         ///adding g2 to g1
+//         let mut g1_rc = wrap_this(g1);
+//         let mut g2_rc = wrap_this(g2);                        
+//         let s = wrap_this(s);
         
-        // g2 <=> s
-        add_child(&mut g2_rc,&s); 
+//         // g2 <=> s
+//         add_child(&mut g2_rc,&s); 
         
-        //g1 <=> g2
-        add_child(&mut g1_rc,&g2_rc); 
-        let p = world_to_object(&s,&point(-2.0,0.0,-10.0));
-        assert!(p.matrix.equal(point(0.0,0.0,-1.0).matrix));
+//         //g1 <=> g2
+//         add_child(&mut g1_rc,&g2_rc); 
+//         let p = world_to_object(&s,&point(-2.0,0.0,-10.0));
+//         assert!(p.matrix.equal(point(0.0,0.0,-1.0).matrix));
 
 
-    }
+//     }
 
-    #[test]
-    pub fn shapes_feature_199(){
-        let mut g1 = Group::new();
-        g1.set_transform(rotate_y(PI/2.0));
-        let mut g2 = Group::new();
-        g2.set_transform(scale(1.0,2.0,3.0));
-        let mut s = Sphere::new();
-        s.set_transform(translation(5.0,0.0,0.0));
+//     #[test]
+//     pub fn shapes_feature_199(){
+//         let mut g1 = Group::new();
+//         g1.set_transform(rotate_y(PI/2.0));
+//         let mut g2 = Group::new();
+//         g2.set_transform(scale(1.0,2.0,3.0));
+//         let mut s = Sphere::new();
+//         s.set_transform(translation(5.0,0.0,0.0));
   
 
-        ///adding g2 to g1
-        let mut g1_rc = wrap_this(g1);
-        let mut g2_rc = wrap_this(g2);                        
-        let s = wrap_this(s);
+//         ///adding g2 to g1
+//         let mut g1_rc = wrap_this(g1);
+//         let mut g2_rc = wrap_this(g2);                        
+//         let s = wrap_this(s);
         
-        // g2 <=> s
-        add_child(&mut g2_rc,&s); 
-        //g1 <=> g2
-        add_child(&mut g1_rc,&g2_rc); 
+//         // g2 <=> s
+//         add_child(&mut g2_rc,&s); 
+//         //g1 <=> g2
+//         add_child(&mut g1_rc,&g2_rc); 
 
-        let n = normal_to_world(&s,&vector(3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0));
-        //assert!(n.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); // result:  matrix: [0.28571428571428575], [0.42857142857142855], [-0.8571428571428571], [0.0]
+//         let n = normal_to_world(&s,&vector(3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0));
+//         //assert!(n.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); // result:  matrix: [0.28571428571428575], [0.42857142857142855], [-0.8571428571428571], [0.0]
 
-        let n_at = normal_at_w(&s, &point(1.7321,1.1547,-5.5774));
-        //assert!(n_at.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); //result:  matrix: [0.28570368184140726], [0.428543151781141], [-0.8571605294481016], [0.0]
+//         let n_at = normal_at_w(&s, &point(1.7321,1.1547,-5.5774));
+//         //assert!(n_at.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); //result:  matrix: [0.28570368184140726], [0.428543151781141], [-0.8571605294481016], [0.0]
 
 
-    }
+//     }
 
-    #[test]
-    pub fn shapes_feature_199_2(){
-        let mut g1 = Group::new();
-        g1.set_transform(rotate_y(PI/2.0));
-        let mut g2 = Group::new();
-        g2.set_transform(scale(1.0,2.0,3.0));
-        let mut s = Sphere::new();
-        s.set_transform(translation(5.0,0.0,0.0));
+//     #[test]
+//     pub fn shapes_feature_199_2(){
+//         let mut g1 = Group::new();
+//         g1.set_transform(rotate_y(PI/2.0));
+//         let mut g2 = Group::new();
+//         g2.set_transform(scale(1.0,2.0,3.0));
+//         let mut s = Sphere::new();
+//         s.set_transform(translation(5.0,0.0,0.0));
   
 
-        ///adding g2 to g1
-        let mut g1_rc = wrap_this(g1);
-        let mut g2_rc = wrap_this(g2);                        
-        let s = wrap_this(s);
+//         ///adding g2 to g1
+//         let mut g1_rc = wrap_this(g1);
+//         let mut g2_rc = wrap_this(g2);                        
+//         let s = wrap_this(s);
         
-        // g2 <=> s
-        add_child(&mut g2_rc,&s); 
-        //g1 <=> g2
-        add_child(&mut g1_rc,&g2_rc); 
+//         // g2 <=> s
+//         add_child(&mut g2_rc,&s); 
+//         //g1 <=> g2
+//         add_child(&mut g1_rc,&g2_rc); 
 
-        let n = normal_to_world(&s,&vector(3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0));
-        //assert!(n.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); // result:  matrix: [0.28571428571428575], [0.42857142857142855], [-0.8571428571428571], [0.0]
+//         let n = normal_to_world(&s,&vector(3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0,3.0_f64.sqrt()/3.0));
+//         //assert!(n.matrix.equal(vector(0.2857,0.4286,-0.8571).matrix)); // result:  matrix: [0.28571428571428575], [0.42857142857142855], [-0.8571428571428571], [0.0]
 
-    }
+//     }
 
-    #[test]
-    pub fn bounding_box_feature_201(){
-        let bbox = BoundingBox::new(point(-1.0, -1.0, -1.0) ,point(1.0, 1.0, 1.0));
-        let matrix = rotate_x(PI/4.0).dot(rotate_y(PI/4.0)).unwrap();
-        let bbox2 = bbox.transform(matrix);
-        //assert_eq!(bbox2.min,point(point(-1.4142, -1.7071, -1.7071).matrix)); //result:matrix: [[-1.4142135623730951], [-1.707106781186548], [-1.707106781186548], [1.0]]
-        //assert_eq!(bbox2.max,point(1.4142, 1.7071, 1.7071)); //result: matrix: [[1.4142135623730951], [1.707106781186548], [1.707106781186548], [1.0]]
+//     #[test]
+//     pub fn bounding_box_feature_201(){
+//         let bbox = BoundingBox::new(point(-1.0, -1.0, -1.0) ,point(1.0, 1.0, 1.0));
+//         let matrix = rotate_x(PI/4.0).dot(rotate_y(PI/4.0)).unwrap();
+//         let bbox2 = bbox.transform(matrix);
+//         //assert_eq!(bbox2.min,point(point(-1.4142, -1.7071, -1.7071).matrix)); //result:matrix: [[-1.4142135623730951], [-1.707106781186548], [-1.707106781186548], [1.0]]
+//         //assert_eq!(bbox2.max,point(1.4142, 1.7071, 1.7071)); //result: matrix: [[1.4142135623730951], [1.707106781186548], [1.707106781186548], [1.0]]
 
-    }
+//     }
 
-    #[test]
-    pub fn bounding_box_feature_202(){
+//     #[test]
+//     pub fn bounding_box_feature_202(){
 
-        let g1 = Group::new();
-        let mut s = Sphere::new();
-        s.set_transform(translation(2.0,5.0,-3.0).dot(scale(2.0,2.0,2.0)).unwrap());
-        let mut c = Cylinder::new();
-        c.min = -2.0;
-        c.max = 2.0;
-        c.set_transform(translation(-4.0,-1.0,4.0).dot(scale(0.5,1.0,0.5)).unwrap());
+//         let g1 = Group::new();
+//         let mut s = Sphere::new();
+//         s.set_transform(translation(2.0,5.0,-3.0).dot(scale(2.0,2.0,2.0)).unwrap());
+//         let mut c = Cylinder::new();
+//         c.min = -2.0;
+//         c.max = 2.0;
+//         c.set_transform(translation(-4.0,-1.0,4.0).dot(scale(0.5,1.0,0.5)).unwrap());
  
 
      
-        let mut g1_rc = wrap_this(g1);
-        let c = wrap_this(c);                        
-        let s = wrap_this(s);
+//         let mut g1_rc = wrap_this(g1);
+//         let c = wrap_this(c);                        
+//         let s = wrap_this(s);
         
 
-        add_child(&mut g1_rc,&s); 
-        //g1 <=> g2
-        add_child(&mut g1_rc,&c); 
+//         add_child(&mut g1_rc,&s); 
+//         //g1 <=> g2
+//         add_child(&mut g1_rc,&c); 
 
-        let bbox = g1_rc.borrow_mut().bounding_box();
-        assert_eq!(bbox,BoundingBox::new(point(-4.5, -3.0, -5.0) ,point(4.0, 7.0, 4.5)));
+//         let bbox = g1_rc.borrow_mut().bounding_box();
+//         assert_eq!(bbox,BoundingBox::new(point(-4.5, -3.0, -5.0) ,point(4.0, 7.0, 4.5)));
 
-        let mut s = Sphere::new();
-        s.set_transform(translation(1.0,-3.0,5.0).dot(scale(0.5,2.0,4.0)).unwrap());
-        let bbox = s.bounding_box();
-        assert_eq!(bbox,BoundingBox::new(point(0.5, -5.0, 1.0) ,point(1.5, -1.0, 9.0)));
+//         let mut s = Sphere::new();
+//         s.set_transform(translation(1.0,-3.0,5.0).dot(scale(0.5,2.0,4.0)).unwrap());
+//         let bbox = s.bounding_box();
+//         assert_eq!(bbox,BoundingBox::new(point(0.5, -5.0, 1.0) ,point(1.5, -1.0, 9.0)));
 
 
         
 
-    }
+//     }
 
-    #[test]
-    pub fn hexagon_feature(){
-        let r = Ray::new(   point(0.0,0.0,0.0),
-        vector(0.0,0.0,1.0));
+//     #[test]
+//     pub fn hexagon_feature(){
+//         let r = Ray::new(   point(0.0,0.0,0.0),
+//         vector(0.0,0.0,1.0));
     
-        let c = hexagon();
-        let c = take_members_out(&c);
-        let xs = intersect(c,&r,vec![]);
+//         let c = hexagon();
+//         let c = take_members_out(&c);
+//         let xs = intersect(c,&r,vec![]);
 
 
-    }
+//     }
 
-    #[test]
-    pub fn bounding_box_intersects(){
+//     #[test]
+//     pub fn bounding_box_intersects(){
         
-        let bbox = BoundingBox::new(point(5.0,-2.0,0.0),point(11.0,4.0,7.0));
-        let answers = [
-        ( point(15.0, 1.0, 2.0)  , vector(-1.0, 0.0, 0.0) , true   ),
-        ( point(-5.0, -1.0, 4.0) , vector(1.0, 0.0, 0.0)  , true   ),
-        ( point(7.0, 6.0, 5.0)   , vector(0.0, -1.0, 0.0) , true   ),
-        ( point(9.0, -5.0, 6.0)  , vector(0.0, 1.0, 0.0)  , true   ),
-        ( point(8.0, 2.0, 12.0)  , vector(0.0, 0.0, -1.0) , true   ),
-        ( point(6.0, 0.0, -5.0)  , vector(0.0, 0.0, 1.0)  , true   ),
-        ( point(8.0, 1.0, 3.5) , vector(0.0, 0.0, 1.0)  , true   ),
-        ( point(9.0, -1.0, -8.0) , vector(2.0, 4.0, 6.0)  , false  ),
-        ( point(8.0, 3.0, -4.0)  , vector(6.0, 2.0, 4.0)  , false  ),
-        ( point(9.0, -1.0, -2.0) , vector(4.0, 6.0, 2.0)  , false  ),
-        ( point(4.0, 0.0, 9.0)   , vector(0.0, 0.0, -1.0) , false  ),
-        ( point(8.0, 6.0, -1.0)  , vector(0.0, -1.0, 0.0) , false  ),
-        ( point(12.0, 5.0, 4.0)  , vector(-1.0, 0.0, 0.0) , false  ),];
+//         let bbox = BoundingBox::new(point(5.0,-2.0,0.0),point(11.0,4.0,7.0));
+//         let answers = [
+//         ( point(15.0, 1.0, 2.0)  , vector(-1.0, 0.0, 0.0) , true   ),
+//         ( point(-5.0, -1.0, 4.0) , vector(1.0, 0.0, 0.0)  , true   ),
+//         ( point(7.0, 6.0, 5.0)   , vector(0.0, -1.0, 0.0) , true   ),
+//         ( point(9.0, -5.0, 6.0)  , vector(0.0, 1.0, 0.0)  , true   ),
+//         ( point(8.0, 2.0, 12.0)  , vector(0.0, 0.0, -1.0) , true   ),
+//         ( point(6.0, 0.0, -5.0)  , vector(0.0, 0.0, 1.0)  , true   ),
+//         ( point(8.0, 1.0, 3.5) , vector(0.0, 0.0, 1.0)  , true   ),
+//         ( point(9.0, -1.0, -8.0) , vector(2.0, 4.0, 6.0)  , false  ),
+//         ( point(8.0, 3.0, -4.0)  , vector(6.0, 2.0, 4.0)  , false  ),
+//         ( point(9.0, -1.0, -2.0) , vector(4.0, 6.0, 2.0)  , false  ),
+//         ( point(4.0, 0.0, 9.0)   , vector(0.0, 0.0, -1.0) , false  ),
+//         ( point(8.0, 6.0, -1.0)  , vector(0.0, -1.0, 0.0) , false  ),
+//         ( point(12.0, 5.0, 4.0)  , vector(-1.0, 0.0, 0.0) , false  ),];
 
-        for (i,e) in answers.iter().enumerate(){
-                        let direction = e.1.normal();
-                        let ray = Ray::new(e.0.clone(),direction);
+//         for (i,e) in answers.iter().enumerate(){
+//                         let direction = e.1.normal();
+//                         let ray = Ray::new(e.0.clone(),direction);
 
-                        let xs = bbox.intersect(&ray);
-                        assert_eq!(xs,e.2)
-                    }
-    }
+//                         let xs = bbox.intersect(&ray);
+//                         assert_eq!(xs,e.2)
+//                     }
+//     }
 
-    #[test]
-    pub fn bounding_box_shapes(){
-        let mut s = Cylinder::new();
-        s.min = -5.0;
-        s.max = 3.0;
+//     #[test]
+//     pub fn bounding_box_shapes(){
+//         let mut s = Cylinder::new();
+//         s.min = -5.0;
+//         s.max = 3.0;
 
-        let bbox = s.bounding_box();
-        assert_eq!(point(-1.0,-5.0,-1.0),bbox.min);
-        assert_eq!(point(1.0,3.0,1.0),bbox.max);
+//         let bbox = s.bounding_box();
+//         assert_eq!(point(-1.0,-5.0,-1.0),bbox.min);
+//         assert_eq!(point(1.0,3.0,1.0),bbox.max);
 
 
-        let mut s = Cone::new();
-        s.min = -5.0;
-        s.max = 3.0;
+//         let mut s = Cone::new();
+//         s.min = -5.0;
+//         s.max = 3.0;
 
-        let bbox = s.bounding_box();
-        assert_eq!(point(-5.0,-5.0,-5.0),bbox.min);
-        assert_eq!(point(5.0,3.0,5.0),bbox.max);
+//         let bbox = s.bounding_box();
+//         assert_eq!(point(-5.0,-5.0,-5.0),bbox.min);
+//         assert_eq!(point(5.0,3.0,5.0),bbox.max);
 
-    }
+//     }
 
-    #[test]
-    pub fn group_bounding_box_child(){
-        let c = Shape::test();
-        let s = Group::new();
+//     #[test]
+//     pub fn group_bounding_box_child(){
+//         let c = Shape::test();
+//         let s = Group::new();
 
-        let c = wrap_this(c);
-        let h = hexagon();
-        let mut s = wrap_this(s);
+//         let c = wrap_this(c);
+//         let h = hexagon();
+//         let mut s = wrap_this(s);
         
-        add_child(&mut s, &c);
-        add_child(&mut s, &h);
-        let r = &Ray::new(point(0.0,0.0,-5.0),vector(0.0,1.0,0.0));
+//         add_child(&mut s, &c);
+//         add_child(&mut s, &h);
+//         let r = &Ray::new(point(0.0,0.0,-5.0),vector(0.0,1.0,0.0));
         
-        let s = s.borrow_mut().clone();
+//         let s = s.borrow_mut().clone();
 
-        let mut l = vec![];
-        if s.get_kind() == Shapes::Group && !s.bounding_box().intersect(r){
-            eprintln!("nono");
-        }
-        //eprintln!("{:?}",_i);
-        else if s.get_kind() == Shapes::Group{
-            eprintln!("group");
-            let newj = Rc::new(RefCell::new(s.clone()));
-            let mem = take_members_out(&newj);
-            let mut results = intersect(mem,&r,vec![]); //sorted
-            l.append(&mut results.h);
-        }
+//         let mut l = vec![];
+//         if s.get_kind() == Shapes::Group && !s.bounding_box().intersect(r){
+//             eprintln!("nono");
+//         }
+//         //eprintln!("{:?}",_i);
+//         else if s.get_kind() == Shapes::Group{
+//             eprintln!("group");
+//             let newj = Rc::new(RefCell::new(s.clone()));
+//             let mem = take_members_out(&newj);
+//             let mut results = intersect(mem,&r,vec![]); //sorted
+//             l.append(&mut results.h);
+//         }
 
-        else {
-            eprintln!("nono2");
-            //eprintln!{"ELSE"};
-            let s = s.clone();
-            let  v = intersect_shape(r,s);
-            for (_a,b) in v.h.iter().enumerate(){   //CHECK 
-                let hits = b.clone(); //issue now bc intersect takes ownership of j
-                l.push(hits);
-        }
-    }
-    eprintln!("l {:?}",l)
-}
+//         else {
+//             eprintln!("nono2");
+//             //eprintln!{"ELSE"};
+//             let s = s.clone();
+//             let  v = intersect_shape(r,s);
+//             for (_a,b) in v.h.iter().enumerate(){   //CHECK 
+//                 let hits = b.clone(); //issue now bc intersect takes ownership of j
+//                 l.push(hits);
+//         }
+//     }
+//     eprintln!("l {:?}",l)
+// }
 
     #[test]
     pub fn hexagon_color(){
-        let h = &*hexagon();
-        let h = h.borrow().clone();
+        let side_h = Group::new();
+        let mut side_h = wrap_this(side_h);
+        let side_h = hexagon_side(side_h);
+        let h = &*side_h;
+        let side_h = h.borrow().clone();
+        // let side_h = hexagon();
+        // let h = &*side_h;
+        // let side_h = h.borrow().clone();
+        
+        let g = Group::new();
+        let mut g = wrap_this(g);
+        add_child(&mut g, &RefCell::new(side_h));
+        let g = &*g;
+        let g = g.borrow().clone();
+        // let h = &*hexagon();
+        // let h = h.borrow().clone();
 
-        let w = World { objects: vec![h] , 
+        let w = World { objects: vec![g] , 
             light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) };
 
         let mut intersections = intersect_world(&w, &Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), vec![]);
-        //let c = color_at(&w, &Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), 5);
+        
         let i_c = intersections.clone();
         let hit = hit(&mut intersections);
-        
+        eprintln!("hit {:?}", hit);
 
             
             let comp = Computations::prepare_computations(hit.unwrap(),&Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), i_c);
