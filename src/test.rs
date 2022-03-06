@@ -1781,22 +1781,32 @@ pub mod tests{
 
     #[test]
     pub fn hexagon_color(){
-        let side_h = Group::new();
-        let mut side_h = wrap_this(side_h);
-        let side_h = hexagon_side(side_h);
-        let h = &*side_h;
-        let side_h = h.borrow().clone();
-        // let side_h = hexagon();
+        // let side_h = Group::new();
+        // let mut side_h = wrap_this(side_h);
+        // let side_h = hexagon_side(side_h);
         // let h = &*side_h;
         // let side_h = h.borrow().clone();
-        
-        let g = Group::new();
-        let mut g = wrap_this(g);
-        add_child(&mut g, &RefCell::new(side_h));
-        let g = &*g;
+        // // let side_h = hexagon();
+        // // let h = &*side_h;
+        // // let side_h = h.borrow().clone();
+        // //let side_h= hexagon(Group::new());
+        // let g = Group::new();
+        // let mut g = wrap_this(g);
+        // add_child(&mut g, &RefCell::new(side_h));
+        // let g = &*g;
+        // let g = g.borrow().clone();
+        //somewhere here, switching it into a function drops the parents
+        let mut list2 = [  hexagon_side(),
+                                                        hexagon_side(),
+                                                        hexagon_side(),
+                                                        hexagon_side(),
+                                                        hexagon_side(),
+                                                        hexagon_side(),];
+        let g = hexagon();
+
+        let g = &*g.0;
         let g = g.borrow().clone();
-        // let h = &*hexagon();
-        // let h = h.borrow().clone();
+
 
         let w = World { objects: vec![g] , 
             light_source: PointLight::new(point(-10.0,10.0,-10.0), Color::new(1.0,1.0,1.0)) };
@@ -1810,7 +1820,7 @@ pub mod tests{
             
             let comp = Computations::prepare_computations(hit.unwrap(),&Ray::new(point(0.0,0.0,0.0), vector(0.0,0.0,1.0)), i_c);
             
-            //shade_hit(&w,comp, 5);
+            shade_hit(&w,comp, 5);
             
 
 
